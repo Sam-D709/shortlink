@@ -2,7 +2,9 @@ package org.samd.shortlink.admin.dao.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
+@EqualsAndHashCode(callSuper = true)
 @Data
 @TableName("linkgroup")
 public class GroupDO extends BaseDO {

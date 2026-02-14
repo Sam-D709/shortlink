@@ -2,14 +2,14 @@ package org.samd.shortlink.project.dao.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
 
+@EqualsAndHashCode(callSuper = true)
 @Data
 @TableName("link")
 public class LinkDO extends BaseDO{
-
-    private static final long serialVersionUID = 1L;
 
     @TableId(type = IdType.AUTO)
     /*

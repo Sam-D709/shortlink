@@ -13,9 +13,6 @@ import lombok.SneakyThrows;
 import org.samd.shortlink.admin.common.conversion.exception.ClientException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Set;
 
 import static org.samd.shortlink.admin.constant.RedisCacheConstant.USER_LOGIN_KEY;
@@ -29,13 +26,9 @@ public class UserTransmitFilter implements Filter {
     private final StringRedisTemplate stringRedisTemplate;
 
     // 白名单路径：这些请求将完全跳过 token 和 username 检测
-    private static final Set<String> WHITE_LIST_PATHS = Collections.unmodifiableSet(
-            new HashSet<>(Arrays.asList(
-                    "/api/shortlink/admin/user/login",
-                    "/api/shortlink/admin/user/register",
-                    "/api/shortlink/admin/user/hasUsername"
-            ))
-    );
+    private static final Set<String> WHITE_LIST_PATHS = Set.of("/api/shortlink/admin/user/login",
+            "/api/shortlink/admin/user/register",
+            "/api/shortlink/admin/user/hasUsername");
 
     @SneakyThrows
     @Override
@@ -65,7 +58,7 @@ public class UserTransmitFilter implements Filter {
 
         String key = USER_LOGIN_KEY + username;
         // 如果 redis 中不存在该 key 或者没有对应 field，则视为未登录或过期
-        boolean hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(key));
+        boolean hasKey = stringRedisTemplate.hasKey(key);
         if (!hasKey) {
             throw new ClientException("用户未登录或登录已过期");
         }
@@ -76,7 +69,7 @@ public class UserTransmitFilter implements Filter {
         }
 
         // 解析为 JSON 对象（写入时使用 JSONUtil.toJsonStr(userDO)）
-        JSONObject obj = null;
+        JSONObject obj;
         try {
             obj = JSONUtil.parseObj(String.valueOf(cached));
         } catch (Exception e) {
