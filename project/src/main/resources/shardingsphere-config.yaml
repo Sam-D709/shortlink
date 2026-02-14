@@ -1,0 +1,51 @@
+# 数据源集合
+dataSources:
+  ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3306/shortlink?useUnicode=true&characterEncoding=UTF-8&rewriteBatchedStatements=true&allowMultiQueries=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: MySQL
+
+rules:
+  - !SHARDING
+    tables:
+      link:
+        actualDataNodes: ds_0.link_${1..16}
+        tableStrategy:
+          standard:
+            shardingColumn: gid
+            shardingAlgorithmName: link_table_inline
+
+      shortlink2gid:
+        actualDataNodes: ds_0.shortlink2gid_${1..16}
+        tableStrategy:
+          standard:
+            shardingColumn: fullshorturl
+            shardingAlgorithmName: shortlink2gid_table_inline
+
+      linkgroup:
+        actualDataNodes: ds_0.linkgroup_${1..16}
+        tableStrategy:
+          standard:
+            shardingColumn: username
+            shardingAlgorithmName: linkgroup_table_inline
+
+    shardingAlgorithms:
+      link_table_inline:
+        type: INLINE
+        props:
+          algorithm-expression: link_$->{Math.abs(gid.hashCode()) % 16 + 1}
+
+      shortlink2gid_table_inline:
+        type: INLINE
+        props:
+          algorithm-expression: shortlink2gid_$->{Math.abs(fullshorturl.hashCode()) % 16 + 1}
+
+      linkgroup_table_inline:
+        type: INLINE
+        props:
+          algorithm-expression: linkgroup_${(Math.abs(username.hashCode()) % 16) + 1}
+# 展现逻辑 SQL & 真实 SQL
+props:
+  sql-show: true
