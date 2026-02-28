@@ -26,7 +26,7 @@ public class UserTransmitFilter implements Filter {
     private final StringRedisTemplate stringRedisTemplate;
 
     // 白名单路径：这些请求将完全跳过 token 和 username 检测
-    private static final Set<String> WHITE_LIST_PATHS = Set.of("/api/shortlink/admin/user/login",
+    private static final Set<String> WHITE_LIST_PATHS = Set.of("/api/shortlink/admin/user/login ",
             "/api/shortlink/admin/user/register",
             "/api/shortlink/admin/user/hasUsername");
 

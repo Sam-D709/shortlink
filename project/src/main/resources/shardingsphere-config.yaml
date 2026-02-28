@@ -46,6 +46,11 @@ rules:
         type: INLINE
         props:
           algorithm-expression: linkgroup_${(Math.abs(username.hashCode()) % 16) + 1}
+
+  - !SINGLE
+    tables:
+      - ds_0.accessstats  # 显式声明单表
+    defaultDataSource: ds_0  # 单表默认数据源
 # 展现逻辑 SQL & 真实 SQL
 props:
   sql-show: true

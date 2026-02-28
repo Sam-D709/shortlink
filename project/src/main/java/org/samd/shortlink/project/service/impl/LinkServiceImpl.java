@@ -1,6 +1,8 @@
 package org.samd.shortlink.project.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.date.Week;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -15,8 +17,10 @@ import org.redisson.api.RedissonClient;
 import org.samd.shortlink.project.common.conversion.exception.ServiceException;
 import org.samd.shortlink.project.common.util.HashUtil;
 import org.samd.shortlink.project.common.util.RandomCodeUtil;
+import org.samd.shortlink.project.dao.entity.AccessStatsDO;
 import org.samd.shortlink.project.dao.entity.LinkDO;
 import org.samd.shortlink.project.dao.entity.Shortlink2GidDO;
+import org.samd.shortlink.project.dao.mapper.AccessStatsMapper;
 import org.samd.shortlink.project.dao.mapper.LinkMapper;
 import org.samd.shortlink.project.dao.mapper.Shortlink2GidMapper;
 import org.samd.shortlink.project.dto.req.LinkCreateReqDTO;
@@ -36,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.net.URI;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -52,6 +57,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     private final Shortlink2GidMapper shortlink2GidMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
+    private final AccessStatsMapper accessStatsMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -250,10 +256,20 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
 
     @Override
     public ResponseEntity<Void> link2Orginurl(String shortlink, HttpServletRequest request) {
+        // 获取协议
+        String protocol = request.getHeader("X-Forwarded-Proto");
+        if (StrUtil.isBlank(protocol)) {
+            protocol = request.getHeader("X-Scheme");
+        }
+        if (StrUtil.isBlank(protocol)) {
+            protocol = request.getScheme();
+        }
+        // 获取域名并去除端口号
         String host = request.getHeader("Host");
-        log.info("访问域名为  {}", host);
-        log.info("访问协议为  {}", request.getHeader("X-Scheme"));
-        String fullShortUrl = host + "/" + shortlink;
+        String domain = host != null ? host.split(":")[0] : "";
+        log.info("访问域名为  {}", domain);
+        log.info("访问协议为  {}", protocol);
+        String fullShortUrl = domain + "/" + shortlink;
 
         // 从 Redis 中获取原始链接
         String originLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
@@ -321,6 +337,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                 lock.unlock();
             }
         }
+        accessStats(fullShortUrl, request);
         // 返回重定向响应
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(originLink))
@@ -341,5 +358,20 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         } else {
             return link;
         }
+    }
+
+    private void accessStats(String shortlink, HttpServletRequest request){
+        int hour = LocalDateTime.now().getHour();
+        Week week = DateUtil.dayOfWeekEnum(new Date());
+        int weekday = week.getValue();
+        AccessStatsDO accessStats = new AccessStatsDO();
+        accessStats.setHour(hour);
+        accessStats.setWeekday(weekday);
+        accessStats.setFullshorturl(shortlink);
+        accessStats.setPv(1);
+        accessStats.setUv(1);
+        accessStats.setUip(1);
+        accessStats.setDate(new Date());
+        accessStatsMapper.shortLinkStats(accessStats);
     }
 }

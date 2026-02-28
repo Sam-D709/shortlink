@@ -1,16 +1,19 @@
 package org.samd.shortlink.project;
 
+import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.date.Week;
+
+import java.time.LocalDateTime;
+import java.util.Date;
+
 public class ShortLinkRoutingTest {
 
     public static void main(String[] args) {
-        String fullShortUrl = "www.samd.org/vJH1A";
+        int hour = LocalDateTime.now().getHour();
+        Week week = DateUtil.dayOfWeekEnum(new Date());
+        int weekday = week.getValue();
 
-        // 模拟 HASH_MOD
-        int shardingCount = 16;
-        int hash = fullShortUrl.hashCode();
-        int index = (Math.abs(hash) % shardingCount) + 1;
-
-        System.out.println("路由到表: shortlink2gid_" + index);
+        System.out.println(hour + " " + weekday);
         // 确认每次运行结果一致
     }
 }
