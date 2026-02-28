@@ -3,6 +3,7 @@ package org.samd.shortlink.project.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.samd.shortlink.project.dao.entity.LinkDO;
 import org.samd.shortlink.project.dto.req.LinkCreateReqDTO;
 import org.samd.shortlink.project.dto.req.LinkPageReqDTO;
@@ -63,5 +64,5 @@ public interface LinkService extends IService<LinkDO> {
      * @param request   请求参数
      * @return 返回参数
      */
-    ResponseEntity<Void> link2Orginurl(String shortlink, HttpServletRequest request);
+    ResponseEntity<Void> link2Orginurl(String shortlink, HttpServletRequest request, HttpServletResponse response);
 }

@@ -2,6 +2,7 @@ package org.samd.shortlink.project.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.samd.shortlink.project.common.conversion.result.Result;
 import org.samd.shortlink.project.common.conversion.result.Results;
@@ -85,7 +86,7 @@ public class LinkController {
      * @return 原始链接
      */
     @GetMapping("/{shortlink}")
-    public ResponseEntity<Void> link2Orginurl(@PathVariable String shortlink,HttpServletRequest request) {
-        return linkService.link2Orginurl(shortlink,request);
+    public ResponseEntity<Void> link2Orginurl(@PathVariable String shortlink, HttpServletRequest request, HttpServletResponse response) {
+        return linkService.link2Orginurl(shortlink,request,response);
     }
 }

@@ -3,12 +3,16 @@ package org.samd.shortlink.project.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.date.Week;
+import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.ArrayUtils;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RBloomFilter;
@@ -43,6 +47,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -255,7 +260,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     }
 
     @Override
-    public ResponseEntity<Void> link2Orginurl(String shortlink, HttpServletRequest request) {
+    public ResponseEntity<Void> link2Orginurl(String shortlink, HttpServletRequest request, HttpServletResponse response) {
         // 获取协议
         String protocol = request.getHeader("X-Forwarded-Proto");
         if (StrUtil.isBlank(protocol)) {
@@ -337,7 +342,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                 lock.unlock();
             }
         }
-        accessStats(fullShortUrl, request);
+        accessStats(fullShortUrl, request, shortlink, response);
         // 返回重定向响应
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(originLink))
@@ -360,16 +365,36 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         }
     }
 
-    private void accessStats(String shortlink, HttpServletRequest request){
+    private void accessStats(String fullshorturl, HttpServletRequest request, String shortlink, HttpServletResponse response) {
+        Cookie[] requestCookies = request.getCookies();
+        AtomicBoolean newVisitor = new AtomicBoolean(true);
+        if (ArrayUtils.isNotEmpty(requestCookies)) {
+            for (Cookie cookie : requestCookies) {
+                if (("uv_" + shortlink).equals(cookie.getName())) {
+                    String uvValue = cookie.getValue();
+                    if (StrUtil.isNotBlank(uvValue)) {
+                        newVisitor.set(false);
+                        break;
+                    }
+                }
+            }
+        }
+        if (newVisitor.get()) {
+            String uv = UUID.fastUUID().toString();
+            Cookie uvCookie = new Cookie("uv_" + shortlink, uv);
+            uvCookie.setPath("/"+shortlink);
+            uvCookie.setMaxAge(60 * 60 * 24); // 1天
+            response.addCookie(uvCookie);
+        }
         int hour = LocalDateTime.now().getHour();
         Week week = DateUtil.dayOfWeekEnum(new Date());
         int weekday = week.getValue();
         AccessStatsDO accessStats = new AccessStatsDO();
         accessStats.setHour(hour);
         accessStats.setWeekday(weekday);
-        accessStats.setFullshorturl(shortlink);
+        accessStats.setFullshorturl(fullshorturl);
         accessStats.setPv(1);
-        accessStats.setUv(1);
+        accessStats.setUv(newVisitor.get() ? 1 : 0);
         accessStats.setUip(1);
         accessStats.setDate(new Date());
         accessStatsMapper.shortLinkStats(accessStats);
