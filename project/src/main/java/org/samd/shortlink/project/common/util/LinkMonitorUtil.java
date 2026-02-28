@@ -66,4 +66,25 @@ public final class LinkMonitorUtil {
             return "Unknown";
         }
     }
+
+    /**
+     * 从HttpServletRequest中获取设备类型
+     * @param request HTTP请求对象
+     * @return 设备类型，如 Mobile、PC
+     */
+    public static String getDeviceFromRequest(HttpServletRequest request) {
+        if (request == null) {
+            return "Unknown";
+        }
+        String userAgent = request.getHeader("User-Agent");
+        if (userAgent == null || userAgent.isEmpty()) {
+            return "Unknown";
+        }
+        String ua = userAgent.toLowerCase();
+        if (ua.contains("mobile") || ua.contains("android") || ua.contains("iphone") || ua.contains("ipad")) {
+            return "Mobile";
+        } else {
+            return "PC";
+        }
+    }
 }

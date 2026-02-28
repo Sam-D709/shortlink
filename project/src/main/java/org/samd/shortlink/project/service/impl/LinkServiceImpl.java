@@ -62,6 +62,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     private final AccessStatsMapper accessStatsMapper;
     private final OSStateMapper osStateMapper;
     private final BrowserStatsMapper browserStatsMapper;
+    private final DeviceStatsMapper deviceStatsMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -344,6 +345,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         accessStats(fullShortUrl, request, shortlink, response);
         osState(fullShortUrl, request);
         browserState(fullShortUrl, request);
+        deviceState(fullShortUrl, request);
         // 返回重定向响应
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(originLink))
@@ -420,5 +422,14 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         browserStatsDO.setBrowser(LinkMonitorUtil.getBrowserFromRequest(request));
         browserStatsDO.setCnt(1);
         browserStatsMapper.shortLinkBrowserStats(browserStatsDO);
+    }
+
+    private void deviceState(String fullshorturl, HttpServletRequest request){
+        DeviceStatsDO deviceStatsDO = new DeviceStatsDO();
+        deviceStatsDO.setFullshorturl(fullshorturl);
+        deviceStatsDO.setDate(new Date());
+        deviceStatsDO.setDevice(LinkMonitorUtil.getDeviceFromRequest(request));
+        deviceStatsDO.setCnt(1);
+        deviceStatsMapper.shortLinkDeviceStats(deviceStatsDO);
     }
 }
