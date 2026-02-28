@@ -386,6 +386,9 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
             uvCookie.setMaxAge(60 * 60 * 24); // 1天
             response.addCookie(uvCookie);
         }
+        String remoteAddr = request.getRemoteAddr();
+        Long uipAdded = stringRedisTemplate.opsForSet().add("short_link:stats:uip" + fullshorturl, remoteAddr);
+        boolean uipFirstFlag = uipAdded != null && uipAdded > 0L;
         int hour = LocalDateTime.now().getHour();
         Week week = DateUtil.dayOfWeekEnum(new Date());
         int weekday = week.getValue();
@@ -395,7 +398,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         accessStats.setFullshorturl(fullshorturl);
         accessStats.setPv(1);
         accessStats.setUv(newVisitor.get() ? 1 : 0);
-        accessStats.setUip(1);
+        accessStats.setUip(uipFirstFlag ? 1 : 0);
         accessStats.setDate(new Date());
         accessStatsMapper.shortLinkStats(accessStats);
     }
