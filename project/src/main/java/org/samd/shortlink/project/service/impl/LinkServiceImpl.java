@@ -20,12 +20,15 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.samd.shortlink.project.common.conversion.exception.ServiceException;
 import org.samd.shortlink.project.common.util.HashUtil;
+import org.samd.shortlink.project.common.util.LinkMonitorUtil;
 import org.samd.shortlink.project.common.util.RandomCodeUtil;
 import org.samd.shortlink.project.dao.entity.AccessStatsDO;
 import org.samd.shortlink.project.dao.entity.LinkDO;
+import org.samd.shortlink.project.dao.entity.OSStateDO;
 import org.samd.shortlink.project.dao.entity.Shortlink2GidDO;
 import org.samd.shortlink.project.dao.mapper.AccessStatsMapper;
 import org.samd.shortlink.project.dao.mapper.LinkMapper;
+import org.samd.shortlink.project.dao.mapper.OSStateMapper;
 import org.samd.shortlink.project.dao.mapper.Shortlink2GidMapper;
 import org.samd.shortlink.project.dto.req.LinkCreateReqDTO;
 import org.samd.shortlink.project.dto.req.LinkPageReqDTO;
@@ -63,6 +66,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
     private final AccessStatsMapper accessStatsMapper;
+    private final OSStateMapper osStateMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -343,6 +347,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
             }
         }
         accessStats(fullShortUrl, request, shortlink, response);
+        osState(fullShortUrl, request);
         // 返回重定向响应
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(originLink))
@@ -401,5 +406,14 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         accessStats.setUip(uipFirstFlag ? 1 : 0);
         accessStats.setDate(new Date());
         accessStatsMapper.shortLinkStats(accessStats);
+    }
+
+    private void osState(String fullshorturl, HttpServletRequest request){
+        OSStateDO osStateDO = new OSStateDO();
+        osStateDO.setFullshorturl(fullshorturl);
+        osStateDO.setDate(new Date());
+        osStateDO.setOs(LinkMonitorUtil.getOSFromRequest(request));
+        osStateDO.setCnt(1);
+        osStateMapper.shortLinkOSStats(osStateDO);
     }
 }
