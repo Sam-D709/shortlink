@@ -22,14 +22,8 @@ import org.samd.shortlink.project.common.conversion.exception.ServiceException;
 import org.samd.shortlink.project.common.util.HashUtil;
 import org.samd.shortlink.project.common.util.LinkMonitorUtil;
 import org.samd.shortlink.project.common.util.RandomCodeUtil;
-import org.samd.shortlink.project.dao.entity.AccessStatsDO;
-import org.samd.shortlink.project.dao.entity.LinkDO;
-import org.samd.shortlink.project.dao.entity.OSStateDO;
-import org.samd.shortlink.project.dao.entity.Shortlink2GidDO;
-import org.samd.shortlink.project.dao.mapper.AccessStatsMapper;
-import org.samd.shortlink.project.dao.mapper.LinkMapper;
-import org.samd.shortlink.project.dao.mapper.OSStateMapper;
-import org.samd.shortlink.project.dao.mapper.Shortlink2GidMapper;
+import org.samd.shortlink.project.dao.entity.*;
+import org.samd.shortlink.project.dao.mapper.*;
 import org.samd.shortlink.project.dto.req.LinkCreateReqDTO;
 import org.samd.shortlink.project.dto.req.LinkPageReqDTO;
 import org.samd.shortlink.project.dto.req.LinkUpdateBaseReqDTO;
@@ -67,6 +61,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     private final RedissonClient redissonClient;
     private final AccessStatsMapper accessStatsMapper;
     private final OSStateMapper osStateMapper;
+    private final BrowserStatsMapper browserStatsMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -348,6 +343,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         }
         accessStats(fullShortUrl, request, shortlink, response);
         osState(fullShortUrl, request);
+        browserState(fullShortUrl, request);
         // 返回重定向响应
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(originLink))
@@ -415,5 +411,14 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         osStateDO.setOs(LinkMonitorUtil.getOSFromRequest(request));
         osStateDO.setCnt(1);
         osStateMapper.shortLinkOSStats(osStateDO);
+    }
+
+    private void browserState(String fullshorturl, HttpServletRequest request){
+        BrowserStatsDO browserStatsDO = new BrowserStatsDO();
+        browserStatsDO.setFullshorturl(fullshorturl);
+        browserStatsDO.setDate(new Date());
+        browserStatsDO.setBrowser(LinkMonitorUtil.getBrowserFromRequest(request));
+        browserStatsDO.setCnt(1);
+        browserStatsMapper.shortLinkBrowserStats(browserStatsDO);
     }
 }
