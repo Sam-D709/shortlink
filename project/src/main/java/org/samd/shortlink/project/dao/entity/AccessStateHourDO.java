@@ -10,8 +10,8 @@ import java.util.Date;
 
 @EqualsAndHashCode
 @Data
-@TableName("accessstats")
-public class AccessStatsDO{
+@TableName("accessstatehour")
+public class AccessStateHourDO {
 
     @TableId(type = IdType.AUTO)
     /**
@@ -40,19 +40,9 @@ public class AccessStatsDO{
     private Integer uv;
 
     /**
-     * IP数量
-     */
-    private Integer uip;
-
-    /**
      * 小时
      */
     private Integer hour;
-
-    /**
-     * 星期x
-     */
-    private Integer weekday;
 
     /**
      * 删除标识 0：未删除 1：已删除

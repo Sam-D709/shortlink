@@ -12,5 +12,5 @@ public interface OSStateMapper extends BaseMapper<OSStateDO> {
             "osstate (fullshorturl, date, delflag, cnt, os)" +
             "VALUES( #{osstate.fullshorturl}, #{osstate.date}, 0, #{osstate.cnt}, #{osstate.os}) " +
             "ON DUPLICATE KEY UPDATE cnt = cnt + #{osstate.cnt};")
-    void shortLinkOSStats(@Param("osstate") OSStateDO osStateDO);
+    void shortLinkOSState(@Param("osstate") OSStateDO osStateDO);
 }

@@ -1,8 +1,6 @@
 package org.samd.shortlink.project.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.date.DateUtil;
-import cn.hutool.core.date.Week;
 import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -44,7 +42,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -59,10 +56,10 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     private final Shortlink2GidMapper shortlink2GidMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
-    private final AccessStatsMapper accessStatsMapper;
+    private final AccessStateHourMapper accessStateHourMapper;
     private final OSStateMapper osStateMapper;
-    private final BrowserStatsMapper browserStatsMapper;
-    private final DeviceStatsMapper deviceStatsMapper;
+    private final BrowserStateMapper browserStateMapper;
+    private final DeviceStateMapper deviceStateMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -342,7 +339,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                 lock.unlock();
             }
         }
-        accessStats(fullShortUrl, request, shortlink, response);
+        accessState(fullShortUrl, request, shortlink, response);
         osState(fullShortUrl, request);
         browserState(fullShortUrl, request);
         deviceState(fullShortUrl, request);
@@ -368,42 +365,43 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         }
     }
 
-    private void accessStats(String fullshorturl, HttpServletRequest request, String shortlink, HttpServletResponse response) {
+    private void accessState(String fullshorturl, HttpServletRequest request, String shortlink, HttpServletResponse response) {
+        boolean newVisitor = true;
+        String uvValue;
         Cookie[] requestCookies = request.getCookies();
-        AtomicBoolean newVisitor = new AtomicBoolean(true);
+
         if (ArrayUtils.isNotEmpty(requestCookies)) {
             for (Cookie cookie : requestCookies) {
-                if (("uv_" + shortlink).equals(cookie.getName())) {
-                    String uvValue = cookie.getValue();
-                    if (StrUtil.isNotBlank(uvValue)) {
-                        newVisitor.set(false);
-                        break;
+                if (("sl_state_" + shortlink).equals(cookie.getName())) {
+                    String value = cookie.getValue();
+                    if (StrUtil.isNotBlank(value)) {
+                        newVisitor = false;
                     }
+                    break;
                 }
             }
         }
-        if (newVisitor.get()) {
-            String uv = UUID.fastUUID().toString();
-            Cookie uvCookie = new Cookie("uv_" + shortlink, uv);
-            uvCookie.setPath("/"+shortlink);
-            uvCookie.setMaxAge(60 * 60 * 24); // 1天
-            response.addCookie(uvCookie);
+
+        if (newVisitor) {
+            uvValue = UUID.fastUUID().toString();
+            Cookie statsCookie = new Cookie("sl_state_" + shortlink, uvValue);
+            statsCookie.setPath("/" + shortlink);
+
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime nextHour = now.plusHours(1).withMinute(0).withSecond(0).withNano(0);
+            long seconds = ChronoUnit.SECONDS.between(now, nextHour);
+            statsCookie.setMaxAge((int) seconds);
+            response.addCookie(statsCookie);
         }
-        String remoteAddr = request.getRemoteAddr();
-        Long uipAdded = stringRedisTemplate.opsForSet().add("short_link:stats:uip" + fullshorturl, remoteAddr);
-        boolean uipFirstFlag = uipAdded != null && uipAdded > 0L;
+
         int hour = LocalDateTime.now().getHour();
-        Week week = DateUtil.dayOfWeekEnum(new Date());
-        int weekday = week.getValue();
-        AccessStatsDO accessStats = new AccessStatsDO();
-        accessStats.setHour(hour);
-        accessStats.setWeekday(weekday);
-        accessStats.setFullshorturl(fullshorturl);
-        accessStats.setPv(1);
-        accessStats.setUv(newVisitor.get() ? 1 : 0);
-        accessStats.setUip(uipFirstFlag ? 1 : 0);
-        accessStats.setDate(new Date());
-        accessStatsMapper.shortLinkStats(accessStats);
+        AccessStateHourDO accessState = new AccessStateHourDO();
+        accessState.setHour(hour);
+        accessState.setFullshorturl(fullshorturl);
+        accessState.setPv(1);
+        accessState.setUv(newVisitor ? 1 : 0);
+        accessState.setDate(new Date());
+        accessStateHourMapper.shortLinkState(accessState);
     }
 
     private void osState(String fullshorturl, HttpServletRequest request){
@@ -412,24 +410,24 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         osStateDO.setDate(new Date());
         osStateDO.setOs(LinkMonitorUtil.getOSFromRequest(request));
         osStateDO.setCnt(1);
-        osStateMapper.shortLinkOSStats(osStateDO);
+        osStateMapper.shortLinkOSState(osStateDO);
     }
 
     private void browserState(String fullshorturl, HttpServletRequest request){
-        BrowserStatsDO browserStatsDO = new BrowserStatsDO();
-        browserStatsDO.setFullshorturl(fullshorturl);
-        browserStatsDO.setDate(new Date());
-        browserStatsDO.setBrowser(LinkMonitorUtil.getBrowserFromRequest(request));
-        browserStatsDO.setCnt(1);
-        browserStatsMapper.shortLinkBrowserStats(browserStatsDO);
+        BrowserStateDO browserStateDO = new BrowserStateDO();
+        browserStateDO.setFullshorturl(fullshorturl);
+        browserStateDO.setDate(new Date());
+        browserStateDO.setBrowser(LinkMonitorUtil.getBrowserFromRequest(request));
+        browserStateDO.setCnt(1);
+        browserStateMapper.shortLinkBrowserState(browserStateDO);
     }
 
     private void deviceState(String fullshorturl, HttpServletRequest request){
-        DeviceStatsDO deviceStatsDO = new DeviceStatsDO();
-        deviceStatsDO.setFullshorturl(fullshorturl);
-        deviceStatsDO.setDate(new Date());
-        deviceStatsDO.setDevice(LinkMonitorUtil.getDeviceFromRequest(request));
-        deviceStatsDO.setCnt(1);
-        deviceStatsMapper.shortLinkDeviceStats(deviceStatsDO);
+        DeviceStateDO deviceStateDO = new DeviceStateDO();
+        deviceStateDO.setFullshorturl(fullshorturl);
+        deviceStateDO.setDate(new Date());
+        deviceStateDO.setDevice(LinkMonitorUtil.getDeviceFromRequest(request));
+        deviceStateDO.setCnt(1);
+        deviceStateMapper.shortLinkDeviceState(deviceStateDO);
     }
 }
