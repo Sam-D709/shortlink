@@ -55,6 +55,9 @@ rules:
       - ds_0.devicestate
       - ds_0.accessstateday
       - ds_0.accessstatemonth
+      - ds_0.osstatemonth
+      - ds_0.browserstatemonth
+      - ds_0.devicestatemonth
     defaultDataSource: ds_0
 # 展现逻辑 SQL & 真实 SQL
 props:
