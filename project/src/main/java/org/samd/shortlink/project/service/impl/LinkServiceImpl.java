@@ -57,6 +57,8 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
     private final AccessStateHourMapper accessStateHourMapper;
+    private final AccessStateDayMapper accessStateDayMapper;
+    private final AccessStateMonthMapper accessStateMonthMapper;
     private final OSStateMapper osStateMapper;
     private final BrowserStateMapper browserStateMapper;
     private final DeviceStateMapper deviceStateMapper;
@@ -366,42 +368,82 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     }
 
     private void accessState(String fullshorturl, HttpServletRequest request, String shortlink, HttpServletResponse response) {
-        boolean newVisitor = true;
+        boolean uvFirstFlag = true;
+        boolean uvDayFirstFlag = true;
+        boolean uvMonthFirstFlag = true;
         String uvValue;
         Cookie[] requestCookies = request.getCookies();
 
-        if (ArrayUtils.isNotEmpty(requestCookies)) {
-            for (Cookie cookie : requestCookies) {
-                if (("sl_state_" + shortlink).equals(cookie.getName())) {
-                    String value = cookie.getValue();
-                    if (StrUtil.isNotBlank(value)) {
-                        newVisitor = false;
+        try {
+            if (ArrayUtils.isNotEmpty(requestCookies)) {
+                for (Cookie cookie : requestCookies) {
+                    if (("sl_state_hour_" + shortlink).equals(cookie.getName())) {
+                        uvFirstFlag = false;
                     }
-                    break;
+                    if (("sl_state_day_" + shortlink).equals(cookie.getName())) {
+                        uvDayFirstFlag = false;
+                    }
+                    if (("sl_state_month_" + shortlink).equals(cookie.getName())) {
+                        uvMonthFirstFlag = false;
+                    }
                 }
             }
-        }
-
-        if (newVisitor) {
             uvValue = UUID.fastUUID().toString();
-            Cookie statsCookie = new Cookie("sl_state_" + shortlink, uvValue);
-            statsCookie.setPath("/" + shortlink);
-
             LocalDateTime now = LocalDateTime.now();
-            LocalDateTime nextHour = now.plusHours(1).withMinute(0).withSecond(0).withNano(0);
-            long seconds = ChronoUnit.SECONDS.between(now, nextHour);
-            statsCookie.setMaxAge((int) seconds);
-            response.addCookie(statsCookie);
-        }
+            if (uvFirstFlag) {
+                Cookie statsCookie = new Cookie("sl_state_hour_" + shortlink, uvValue);
+                statsCookie.setPath("/" + shortlink);
+                LocalDateTime nextHour = now.plusHours(1).withMinute(0).withSecond(0).withNano(0);
+                long seconds = ChronoUnit.SECONDS.between(now, nextHour);
+                statsCookie.setMaxAge((int) seconds);
+                response.addCookie(statsCookie);
+            }
+            if (uvDayFirstFlag) {
+                Cookie statsCookie = new Cookie("sl_state_day_" + shortlink, uvValue);
+                statsCookie.setPath("/" + shortlink);
+                LocalDateTime nextDay = now.plusDays(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+                long seconds = ChronoUnit.SECONDS.between(now, nextDay);
+                statsCookie.setMaxAge((int) seconds);
+                response.addCookie(statsCookie);
+            }
+            if (uvMonthFirstFlag) {
+                Cookie statsCookie = new Cookie("sl_state_month_" + shortlink, uvValue);
+                statsCookie.setPath("/" + shortlink);
+                LocalDateTime nextMonth = now.plusMonths(1).withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+                long seconds = ChronoUnit.SECONDS.between(now, nextMonth);
+                statsCookie.setMaxAge((int) seconds);
+                response.addCookie(statsCookie);
+            }
 
-        int hour = LocalDateTime.now().getHour();
-        AccessStateHourDO accessState = new AccessStateHourDO();
-        accessState.setHour(hour);
-        accessState.setFullshorturl(fullshorturl);
-        accessState.setPv(1);
-        accessState.setUv(newVisitor ? 1 : 0);
-        accessState.setDate(new Date());
-        accessStateHourMapper.shortLinkState(accessState);
+            // hour
+            int hour = now.getHour();
+            AccessStateHourDO accessStateHour = new AccessStateHourDO();
+            accessStateHour.setHour(hour);
+            accessStateHour.setFullshorturl(fullshorturl);
+            accessStateHour.setPv(1);
+            accessStateHour.setUv(uvFirstFlag ? 1 : 0);
+            accessStateHour.setDate(new Date());
+            accessStateHourMapper.shortLinkState(accessStateHour);
+
+            // day
+            AccessStateDayDO accessStateDay = new AccessStateDayDO();
+            accessStateDay.setFullshorturl(fullshorturl);
+            accessStateDay.setPv(1);
+            accessStateDay.setUv(uvDayFirstFlag ? 1 : 0);
+            accessStateDay.setDate(new Date());
+            accessStateDayMapper.shortLinkState(accessStateDay);
+
+            // month
+            AccessStateMonthDO accessStateMonth = new AccessStateMonthDO();
+            accessStateMonth.setYear(String.valueOf(now.getYear()));
+            accessStateMonth.setMonth(now.getMonthValue());
+            accessStateMonth.setFullshorturl(fullshorturl);
+            accessStateMonth.setPv(1);
+            accessStateMonth.setUv(uvMonthFirstFlag ? 1 : 0);
+            accessStateMonthMapper.shortLinkState(accessStateMonth);
+        } catch (Throwable ex) {
+            log.error("短链接访问统计异常", ex);
+        }
     }
 
     private void osState(String fullshorturl, HttpServletRequest request){
