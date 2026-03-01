@@ -20,14 +20,18 @@ import org.samd.shortlink.project.common.conversion.exception.ServiceException;
 import org.samd.shortlink.project.common.util.HashUtil;
 import org.samd.shortlink.project.common.util.LinkMonitorUtil;
 import org.samd.shortlink.project.common.util.RandomCodeUtil;
-import org.samd.shortlink.project.dao.entity.*;
-import org.samd.shortlink.project.dao.mapper.*;
+import org.samd.shortlink.project.dao.entity.LinkDO;
+import org.samd.shortlink.project.dao.entity.Shortlink2GidDO;
+import org.samd.shortlink.project.dao.mapper.LinkMapper;
+import org.samd.shortlink.project.dao.mapper.Shortlink2GidMapper;
 import org.samd.shortlink.project.dto.req.LinkCreateReqDTO;
 import org.samd.shortlink.project.dto.req.LinkPageReqDTO;
 import org.samd.shortlink.project.dto.req.LinkUpdateBaseReqDTO;
 import org.samd.shortlink.project.dto.req.LinkUpdateGidReqDTO;
 import org.samd.shortlink.project.dto.resp.LinkGroupCountQueryRespDTO;
 import org.samd.shortlink.project.dto.resp.LinkRespDTO;
+import org.samd.shortlink.project.mq.entity.StatsMessage;
+import org.samd.shortlink.project.mq.main.StatsProducer;
 import org.samd.shortlink.project.service.LinkService;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -56,12 +60,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     private final Shortlink2GidMapper shortlink2GidMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
-    private final AccessStateHourMapper accessStateHourMapper;
-    private final AccessStateDayMapper accessStateDayMapper;
-    private final AccessStateMonthMapper accessStateMonthMapper;
-    private final OSStateMapper osStateMapper;
-    private final BrowserStateMapper browserStateMapper;
-    private final DeviceStateMapper deviceStateMapper;
+    private final StatsProducer statsProducer;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -341,33 +340,6 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                 lock.unlock();
             }
         }
-        accessState(fullShortUrl, request, shortlink, response);
-        osState(fullShortUrl, request);
-        browserState(fullShortUrl, request);
-        deviceState(fullShortUrl, request);
-        // 返回重定向响应
-        return ResponseEntity.status(HttpStatus.FOUND)
-                .location(URI.create(originLink))
-                .build();
-    }
-
-    private String generateShortCode(String originalUrl, String domain) throws ServiceException {
-        String link;
-        int attempt = 0;
-        do {
-            String input = attempt == 0 ? originalUrl : originalUrl + RandomCodeUtil.generate();
-            link = HashUtil.hashToBase62(input);
-            attempt++;
-        } while (linkBloomFilter.contains(domain + "/" + link) && attempt < 3);
-
-        if (attempt == 3) {
-            throw new ServiceException("短链接生成失败，请稍后重试");
-        } else {
-            return link;
-        }
-    }
-
-    private void accessState(String fullshorturl, HttpServletRequest request, String shortlink, HttpServletResponse response) {
         boolean uvFirstFlag = true;
         boolean uvDayFirstFlag = true;
         boolean uvMonthFirstFlag = true;
@@ -414,62 +386,44 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                 statsCookie.setMaxAge((int) seconds);
                 response.addCookie(statsCookie);
             }
-
-            // hour
-            int hour = now.getHour();
-            AccessStateHourDO accessStateHour = new AccessStateHourDO();
-            accessStateHour.setHour(hour);
-            accessStateHour.setFullshorturl(fullshorturl);
-            accessStateHour.setPv(1);
-            accessStateHour.setUv(uvFirstFlag ? 1 : 0);
-            accessStateHour.setDate(new Date());
-            accessStateHourMapper.shortLinkState(accessStateHour);
-
-            // day
-            AccessStateDayDO accessStateDay = new AccessStateDayDO();
-            accessStateDay.setFullshorturl(fullshorturl);
-            accessStateDay.setPv(1);
-            accessStateDay.setUv(uvDayFirstFlag ? 1 : 0);
-            accessStateDay.setDate(new Date());
-            accessStateDayMapper.shortLinkState(accessStateDay);
-
-            // month
-            AccessStateMonthDO accessStateMonth = new AccessStateMonthDO();
-            accessStateMonth.setYear(String.valueOf(now.getYear()));
-            accessStateMonth.setMonth(now.getMonthValue());
-            accessStateMonth.setFullshorturl(fullshorturl);
-            accessStateMonth.setPv(1);
-            accessStateMonth.setUv(uvMonthFirstFlag ? 1 : 0);
-            accessStateMonthMapper.shortLinkState(accessStateMonth);
         } catch (Throwable ex) {
             log.error("短链接访问统计异常", ex);
         }
+        LocalDateTime now = LocalDateTime.now();
+        StatsMessage message = StatsMessage.builder()
+                .fullShortUrl(fullShortUrl)
+                .date(new Date())
+                .hour(now.getHour())
+                .year(now.getYear())
+                .month(now.getMonthValue())
+                .uvFirstFlag(uvFirstFlag)
+                .uvDayFirstFlag(uvDayFirstFlag)
+                .uvMonthFirstFlag(uvMonthFirstFlag)
+                .os(LinkMonitorUtil.getOSFromRequest(request))
+                .browser(LinkMonitorUtil.getBrowserFromRequest(request))
+                .device(LinkMonitorUtil.getDeviceFromRequest(request))
+                .build();
+        statsProducer.send(message);
+        // 返回重定向响应
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .location(URI.create(originLink))
+                .build();
     }
 
-    private void osState(String fullshorturl, HttpServletRequest request){
-        OSStateDO osStateDO = new OSStateDO();
-        osStateDO.setFullshorturl(fullshorturl);
-        osStateDO.setDate(new Date());
-        osStateDO.setOs(LinkMonitorUtil.getOSFromRequest(request));
-        osStateDO.setCnt(1);
-        osStateMapper.shortLinkOSState(osStateDO);
+    private String generateShortCode(String originalUrl, String domain) throws ServiceException {
+        String link;
+        int attempt = 0;
+        do {
+            String input = attempt == 0 ? originalUrl : originalUrl + RandomCodeUtil.generate();
+            link = HashUtil.hashToBase62(input);
+            attempt++;
+        } while (linkBloomFilter.contains(domain + "/" + link) && attempt < 3);
+
+        if (attempt == 3) {
+            throw new ServiceException("短链接生成失败，请稍后重试");
+        } else {
+            return link;
+        }
     }
 
-    private void browserState(String fullshorturl, HttpServletRequest request){
-        BrowserStateDO browserStateDO = new BrowserStateDO();
-        browserStateDO.setFullshorturl(fullshorturl);
-        browserStateDO.setDate(new Date());
-        browserStateDO.setBrowser(LinkMonitorUtil.getBrowserFromRequest(request));
-        browserStateDO.setCnt(1);
-        browserStateMapper.shortLinkBrowserState(browserStateDO);
-    }
-
-    private void deviceState(String fullshorturl, HttpServletRequest request){
-        DeviceStateDO deviceStateDO = new DeviceStateDO();
-        deviceStateDO.setFullshorturl(fullshorturl);
-        deviceStateDO.setDate(new Date());
-        deviceStateDO.setDevice(LinkMonitorUtil.getDeviceFromRequest(request));
-        deviceStateDO.setCnt(1);
-        deviceStateMapper.shortLinkDeviceState(deviceStateDO);
-    }
 }

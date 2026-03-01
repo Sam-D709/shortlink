@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="org.samd.shortlink.project.dao.mapper.OSStateMapper">
+
+    <insert id="batchInsertOrUpdate">
+        INSERT INTO osstate (fullshorturl, date, delflag, cnt, os)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.fullshorturl}, #{item.date}, 0, #{item.cnt}, #{item.os})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+        cnt = cnt + VALUES(cnt)
+    </insert>
+
+</mapper>
