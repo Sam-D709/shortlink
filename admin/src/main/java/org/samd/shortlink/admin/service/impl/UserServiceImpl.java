@@ -48,8 +48,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserDO> implements 
     private final StringRedisTemplate stringRedisTemplate;
 
     @Override
-    public UserRespDTO getUserByUsername(String username) {
-        ParamValidator.NameNotNull(username);
+    public UserRespDTO getUserByUsername() {
+        String username = UserContext.getUsername();
         QueryWrapper<UserDO> qw = new QueryWrapper<>();
         qw.eq("username", username);
         UserDO userDO = getOne(qw);

@@ -55,11 +55,11 @@ public class RecycleServiceImpl extends ServiceImpl<LinkMapper,LinkDO> implement
                 .eq("gid", gid)
                 .in("id", ids)
                 .eq("enablestatus", 1)
-                .eq("delflag", 0));
+                .eq("delflag", 0)
+                .eq("username", UserContext.getUsername()));
         if (linkDOS == null || linkDOS.isEmpty()) {
             return false;
         }
-
         List<String> fullShortUrls = linkDOS.stream()
                 .map(LinkDO::getFullshorturl)
                 .filter(Objects::nonNull)
@@ -162,7 +162,8 @@ public class RecycleServiceImpl extends ServiceImpl<LinkMapper,LinkDO> implement
                 .eq("gid", gid)
                 .in("id", ids)
                 .eq("enablestatus", 0)
-                .eq("delflag", 0));
+                .eq("delflag", 0)
+                .eq(("username"), UserContext.getUsername()));
         if (linkDOS == null || linkDOS.isEmpty()) {
             return false;
         }
@@ -234,6 +235,7 @@ public class RecycleServiceImpl extends ServiceImpl<LinkMapper,LinkDO> implement
         }
         UpdateWrapper<LinkDO> updateWrapper = new UpdateWrapper<>();
         updateWrapper.eq("gid", gid)
+                .eq("username", UserContext.getUsername())
                 .in("id", ids)
                 .set("delflag", 1);  // 直接设置更新字段
         boolean updated = update(null, updateWrapper);

@@ -3,6 +3,7 @@ package org.samd.shortlink.project.common.config;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.reflection.MetaObject;
+import org.samd.shortlink.project.common.util.UserContext;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -19,6 +20,7 @@ public class MyMetaObjectHandler implements MetaObjectHandler {
         strictInsertFill(metaObject, "updatetime", LocalDateTime::now, LocalDateTime.class);
         strictInsertFill(metaObject, "delflag", () -> 0, Integer.class);
         strictInsertFill(metaObject, "enablestatus", () -> 1, Integer.class);
+        strictInsertFill(metaObject, "username", UserContext::getUsername, String.class);
     }
 
     @Override

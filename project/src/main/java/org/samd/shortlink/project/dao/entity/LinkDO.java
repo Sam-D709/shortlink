@@ -72,4 +72,8 @@ public class LinkDO extends BaseDO{
      * 描述
      */
     private String description;
+    /**
+     * 用户名
+     */
+    private String username;
 }

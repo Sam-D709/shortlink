@@ -20,12 +20,11 @@ public class UserController {
 
     /**
      * 通过用户名获取用户信息
-     * @param username 用户名
      * @return 用户信息实体
      */
     @GetMapping("/api/shortlink/admin/user/username")
-    public Result<UserRespDTO> getUserByUsername(@RequestParam("username") String username) {
-        return Results.success(userService.getUserByUsername(username));
+    public Result<UserRespDTO> getUserByUsername() {
+        return Results.success(userService.getUserByUsername());
     }
 
     /**

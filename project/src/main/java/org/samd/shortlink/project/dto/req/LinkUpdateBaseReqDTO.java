@@ -10,11 +10,6 @@ public class LinkUpdateBaseReqDTO {
     private String id;
 
     /**
-     * 域名
-     */
-    private String domain;
-
-    /**
      * 原始链接
      */
     private String originurl;

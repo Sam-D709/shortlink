@@ -15,10 +15,9 @@ import org.samd.shortlink.admin.dto.resp.UserRespDTO;
 public interface UserService extends IService<UserDO> {
     /**
      * 通过用户名获取用户信息
-     * @param username 用户名
      * @return 用户信息实体
      */
-    UserRespDTO getUserByUsername(String username);
+    UserRespDTO getUserByUsername();
 
     /**
      * 验证用户名是否存在
