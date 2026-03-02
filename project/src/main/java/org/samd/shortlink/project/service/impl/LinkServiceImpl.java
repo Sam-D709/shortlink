@@ -234,16 +234,16 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     @Override
     public ResponseEntity<Void> link2Orginurl(String shortlink) {
         String fullShortUrl = UvStatsContext.getDomain() + "/" + shortlink;
+        String originLink;
         RLock readLock = redissonClient.getReadWriteLock("rwlock:shortlink:" + fullShortUrl).readLock();
         readLock.lock();
         try {
             // 从 Redis 中获取原始链接
-            String originLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
+            originLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
             if (originLink == null) {
                 // 检查布隆过滤器和 Redis 标记
                 if (!linkBloomFilter.contains(fullShortUrl) ||
                         StrUtil.isNotBlank(stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl)))) {
-                    readLock.unlock();
                     throw new ServiceException("短链接不存在或已经删除");
                 }
                 // 获取分布式锁
@@ -255,8 +255,6 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                     if (originLink == null) {
                         String nullLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl));
                         if (StrUtil.isNotBlank(nullLink)) {
-                            lock.unlock();
-                            readLock.unlock();
                             throw new ServiceException("短链接不存在或已经删除");
                         }
                         // 查询数据库
@@ -266,8 +264,6 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                         if (gotoDo == null) {
                             // 设置标记为不存在的键，避免重复查询
                             stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
-                            lock.unlock();
-                            readLock.unlock();
                             throw new ServiceException("短链接不存在或已经删除");
                         }
 
@@ -289,8 +285,6 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                                         .eq("gid", gotoDo.getGid())
                                         .set("delflag", 1));
                                 stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
-                                lock.unlock();
-                                readLock.unlock();
                                 throw new ServiceException("短链接不存在或已经删除");
                             } else if (linkDO.getValiddatetype() == 0) {
                                 stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl), originLink, 30, DAYS);
@@ -299,45 +293,39 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                                 stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl), originLink, MIN, MINUTES);
                             }else{
                                 stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
-                                lock.unlock();
-                                readLock.unlock();
                                 throw new ServiceException("短链接不存在或已经删除");
                             }
                         }else {
                             stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
-                            lock.unlock();
-                            readLock.unlock();
                             throw new ServiceException("短链接不存在或已经删除");
                         }
                     }
                 } finally {
                     lock.unlock();
-                    readLock.unlock();
                 }
             }
-            LocalDateTime now = LocalDateTime.now();
-            StatsMessage message = StatsMessage.builder()
-                    .fullShortUrl(fullShortUrl)
-                    .date(new Date())
-                    .hour(now.getHour())
-                    .year(now.getYear())
-                    .month(now.getMonthValue())
-                    .uvFirstFlag(UvStatsContext.isUvFirst())
-                    .uvDayFirstFlag(UvStatsContext.isUvDayFirst())
-                    .uvMonthFirstFlag(UvStatsContext.isUvMonthFirst())
-                    .os(UvStatsContext.getOs())
-                    .browser(UvStatsContext.getBrowser())
-                    .device(UvStatsContext.getDevice())
-                    .build();
-            statsProducer.send(message);
-            readLock.unlock();
-            // 返回重定向响应
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(originLink))
-                    .build();
-        } finally {
+        }finally {
             readLock.unlock();
         }
+        LocalDateTime now = LocalDateTime.now();
+        StatsMessage message = StatsMessage.builder()
+                .fullShortUrl(fullShortUrl)
+                .date(new Date())
+                .hour(now.getHour())
+                .year(now.getYear())
+                .month(now.getMonthValue())
+                .uvFirstFlag(UvStatsContext.isUvFirst())
+                .uvDayFirstFlag(UvStatsContext.isUvDayFirst())
+                .uvMonthFirstFlag(UvStatsContext.isUvMonthFirst())
+                .os(UvStatsContext.getOs())
+                .browser(UvStatsContext.getBrowser())
+                .device(UvStatsContext.getDevice())
+                .build();
+        statsProducer.send(message);
+        // 返回重定向响应
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .location(URI.create(originLink))
+                .build();
     }
 
     private String generateShortCode(String originalUrl, String domain) throws ServiceException {

@@ -27,6 +27,13 @@ public class LinkStateController {
         return Results.success(linkStateService.getDefaultLinkState(fullshorturl));
     }
 
+    /**
+     * 获取短链接的日监控数据,包括：每天访问量,访客数等
+     * @param fullshorturl 完整短链接
+     * @param startDate 起始日期，格式为yyyy-MM-dd
+     * @param endDate 结束日期，格式为yyyy-MM-dd
+     * @return 日监控数据列表
+     */
     @GetMapping("/api/shortlink/project/linkstate/daystate")
     public Result<LinkDayStateRespDTO> getDayLinkState(
             @RequestParam String fullshorturl,
@@ -35,6 +42,13 @@ public class LinkStateController {
         return Results.success(linkStateService.getDayLinkState(fullshorturl, startDate, endDate));
     }
 
+    /**
+     * 获取短链接的月监控数据,包括：每月访问量,访客数等
+     * @param fullshorturl 完整短链接
+     * @param startMonth 起始月份，格式为yyyy-MM
+     * @param endMonth 结束月份，格式为yyyy-MM
+     * @return 月监控数据列表
+     */
     @GetMapping("/api/shortlink/project/linkstate/monthstate")
     public Result<LinkMonthStateRespDTO> getMonthLinkState(
             @RequestParam String fullshorturl,

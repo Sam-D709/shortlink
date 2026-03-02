@@ -3,14 +3,14 @@ import http from '../axios'
 export default {
   queryPage(data) {
     return http({
-      url: '/page',
+      url: '/api/shortlink/project/getpagelink',
       method: 'get',
       params: data
     })
   },
   addSmallLink(data) {
     return http({
-      url: '/create',
+      url: '/api/shortlink/project/link/create',
       method: 'post',
       data
     })
@@ -18,7 +18,7 @@ export default {
   addLinks(data) {
     return http({
       responseType: 'arraybuffer',
-      url: '/create/batch',
+      url: '/api/shortlink/project/link/create/batch',
       method: 'post',
       data,
       // responseType: 'blob'
@@ -26,8 +26,8 @@ export default {
   },
   editSmallLink(data) {
     return http({
-      url: '/update',
-      method: 'post',
+      url: '/api/shortlink/project/link/updatebase',
+      method: 'put',
       data
     })
   },
@@ -35,38 +35,39 @@ export default {
   queryTitle(data) {
     return http({
       method: 'get',
-      url: '/title',
+      url: '/api/shortlink/project/link/title',
       params: data
     })
   },
-  // 移动到回收站
+  // 移动到回收站（创建）
   toRecycleBin(data) {
     return http({
-      url: '/recycle-bin/save',
-      method: 'post',
+      url: '/api/shortlink/project/recyclelink/create',
+      method: 'put',
       data
     })
   },
-  // 查询回收站数据
-  queryRecycleBin(data) {
+  // 查询回收站数据（分页）
+  queryRecycleBin({ current = 1, size = 10 } = {}) {
     return http({
-      url: '/recycle-bin/page',
+      url: '/api/shortlink/project/recyclelink/getpage',
       method: 'get',
-      params: data
+      params: { current, size }
     })
   },
   // 恢复短链接
   recoverLink(data) {
     return http({
-      method: 'post',
-      url: '/recycle-bin/recover',
+      url: '/api/shortlink/project/recyclelink/recover',
+      method: 'put',
       data
     })
   },
+  // 删除短链接
   removeLink(data) {
     return http({
-      method: 'post',
-      url: '/recycle-bin/remove',
+      url: '/api/shortlink/project/recyclelink/delete',
+      method: 'delete',
       data
     })
   },
@@ -75,7 +76,7 @@ export default {
     return http({
       method: 'get',
       params: data,
-      url: 'stats'
+      url: '/api/shortlink/project/stats'
     })
   },
   // 查询分组的访问记录
@@ -83,7 +84,7 @@ export default {
     return http({
       method: 'get',
       params: data,
-      url: 'stats/access-record'
+      url: '/api/shortlink/project/stats/access-record'
     })
   }
 }

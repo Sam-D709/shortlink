@@ -11,6 +11,7 @@ public class StateMonthStatScheduler {
 
     /**
      * 每月1日凌晨2点执行
+     * 定时任务,整理月度统计数据,包括：访问量,访客数等，并保存到数据库中
      */
     @Scheduled(cron = "0 0 2 1 * ?")
     public void statMonthJob() {

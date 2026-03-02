@@ -4,7 +4,7 @@ export default {
   // 注册
   addUser(data) {
     return http({
-      url: '/user',
+      url: '/api/shortlink/admin/user/register',
       method: 'post',
       data
     })
@@ -12,7 +12,7 @@ export default {
   // 编辑信息
   editUser(data) {
     return http({
-      url: '/user',
+      url: '/api/shortlink/admin/user',
       method: 'put',
       data
     })
@@ -20,30 +20,30 @@ export default {
   // 登录
   login(data) {
     return http({
-      url: '/user/login',
+      url: '/api/shortlink/admin/user/login',
       method: 'post',
       data
     })
   },
   // 退出登录
-  logout(data) {
+  logout() {
     return http({
-      url: '/user/logout?token=' + data.token + '&username=' + data.username,
-      method: 'delete'
+      url: '/api/shortlink/admin/user/logout',
+      method: 'post'
     })
   },
   // 检查用户名是否可用
   hasUsername(data) {
     return http({
-      url: '/user/has-username',
+      url: '/api/shortlink/admin/user/hasUsername',
       method: 'get',
       params: data
     })
   },
-  // 根据用户名查找用户信息
-  queryUserInfo(data) {
+  // 根据用户名查找用户信息（实际应为获取当前登录用户信息）
+  queryUserInfo() {
     return http({
-      url: '/actual/user/' + data,
+      url: '/api/shortlink/admin/user/username',
       method: 'get'
     })
   }

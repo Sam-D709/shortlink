@@ -596,6 +596,12 @@ const totalNums = ref(0)
 // 数据变化后更新当前页面
 const queryPage = async () => {
   pageParams.gid = editableTabs.value?.[selectedIndex.value]?.gid
+  if (!pageParams.gid) {
+    // 可选：ElMessage.warning('请选择分组')
+    tableData.value = []
+    totalNums.value = 0
+    return
+  }
   nums.value = editableTabs.value?.[selectedIndex.value]?.shortLinkCount || 0
   const res = await API.smallLinkPage.queryPage(pageParams)
   if (res?.data.success) {
@@ -666,7 +672,7 @@ const showAddGroup = () => {
 // 添加分组
 const addGroup = async () => {
   addGroupLoading.value = true
-  const res1 = await API.group.addGroup({ name: newGroupName.value })
+  const res1 = await API.group.addGroup(newGroupName.value)
   if (res1?.data.success) {
     ElMessage.success('添加成功')
     getGroupInfo(queryPage)
