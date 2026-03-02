@@ -248,21 +248,27 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     public ResponseEntity<Void> link2Orginurl(String shortlink) {
         String fullShortUrl = UvStatsContext.getDomain() + "/" + shortlink;
         String originLink;
-        RLock readLock = redissonClient.getReadWriteLock("rwlock:shortlink:" + fullShortUrl).readLock();
-        readLock.lock();
-        try {
-            // 从 Redis 中获取原始链接
-            originLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
-            if (originLink == null) {
-                // 检查布隆过滤器和 Redis 标记
-                if (!linkBloomFilter.contains(fullShortUrl) ||
-                        StrUtil.isNotBlank(stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl)))) {
-                    throw new ServiceException("短链接不存在或已经删除");
+        // 从 Redis 中获取原始链接
+        originLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
+        if (originLink == null) {
+            // 检查布隆过滤器和 Redis 标记
+            if (!linkBloomFilter.contains(fullShortUrl) ||
+                    StrUtil.isNotBlank(stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl)))) {
+                throw new ServiceException("短链接不存在或已经删除");
+            }
+            // 获取读写锁的读锁，尝试1秒内获取，超时则直接返回错误
+            RLock readLock = redissonClient.getReadWriteLock("rwlock:shortlink:" + fullShortUrl).readLock();
+            boolean locked = false;
+            try {
+                locked = readLock.tryLock(1, java.util.concurrent.TimeUnit.SECONDS);
+                if (!locked) {
+                    // 超过1秒未获取到锁，直接返回错误
+                    throw new ServiceException("系统繁忙，请稍后重试");
                 }
                 // 获取分布式锁
                 RLock lock = redissonClient.getLock(String.format(LOCK_GOTO_SHORT_LINK_KEY, fullShortUrl));
                 lock.lock();
-                try {
+                try{
                     // 再次检查 Redis
                     originLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
                     if (originLink == null) {
@@ -279,14 +285,13 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                             stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
                             throw new ServiceException("短链接不存在或已经删除");
                         }
-
                         LinkDO linkDO = getOne(new QueryWrapper<LinkDO>()
                                 .eq("gid", gotoDo.getGid())
                                 .eq("fullshorturl", fullShortUrl)
                                 .eq("enablestatus", 1)
                                 .eq("delflag", 0));
                         // 如果短链接已过期或被标记为删除，更新 delflag 并设置 Redis 标记
-                        if (linkDO != null ) {
+                        if (linkDO != null) {
                             originLink = linkDO.getOriginurl();
                             if (linkDO.getValiddatetype() == 1 && linkDO.getValiddate().isBefore(LocalDateTime.now())) {
                                 update(null, new UpdateWrapper<LinkDO>()
@@ -304,21 +309,26 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                             } else if (linkDO.getValiddatetype() == 1 && linkDO.getValiddate().isAfter(LocalDateTime.now())) {
                                 long MIN = Math.min(LocalDateTime.now().until(linkDO.getValiddate(), ChronoUnit.MINUTES), 1800);
                                 stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl), originLink, MIN, MINUTES);
-                            }else{
+                            } else {
                                 stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
                                 throw new ServiceException("短链接不存在或已经删除");
                             }
-                        }else {
+                        } else {
                             stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
                             throw new ServiceException("短链接不存在或已经删除");
                         }
                     }
-                } finally {
+                }finally {
                     lock.unlock();
                 }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ServiceException("系统繁忙，请稍后重试");
+            } finally {
+                if (locked) {
+                    readLock.unlock();
+                }
             }
-        }finally {
-            readLock.unlock();
         }
         LocalDateTime now = LocalDateTime.now();
         StatsMessage message = StatsMessage.builder()

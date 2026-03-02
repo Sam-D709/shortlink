@@ -13,16 +13,21 @@ import org.samd.shortlink.admin.dao.entity.GroupDO;
 import org.samd.shortlink.admin.dao.mapper.GroupMapper;
 import org.samd.shortlink.admin.dto.req.LinkGroupOrderReqDTO;
 import org.samd.shortlink.admin.dto.resp.GroupRespDTO;
+import org.samd.shortlink.admin.mq.entity.BatchDeleteLinkMessage;
+import org.samd.shortlink.admin.mq.producer.BatchDeleteLinkProducer;
 import org.samd.shortlink.admin.service.GroupService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class GroupServiceImpl extends ServiceImpl<GroupMapper, GroupDO> implements GroupService{
+
+    BatchDeleteLinkProducer batchDeleteLinkProducer;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -70,6 +75,10 @@ public class GroupServiceImpl extends ServiceImpl<GroupMapper, GroupDO> implemen
                 .eq("username",UserContext.getUsername())
                 .eq("delflag",0)
                 .set("delflag",1);
+        BatchDeleteLinkMessage message = new BatchDeleteLinkMessage();
+        message.setGid(gid);
+        ArrayList<String> messageList = new ArrayList<>();
+        batchDeleteLinkProducer.send(messageList);
         return update(uw);
     }
 
