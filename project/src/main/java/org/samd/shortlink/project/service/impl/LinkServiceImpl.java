@@ -253,6 +253,11 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                     // 再次检查 Redis
                     originLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
                     if (originLink == null) {
+                        String nullLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl));
+                        if (StrUtil.isNotBlank(nullLink)) {
+                            readLock.unlock();
+                            throw new ServiceException("短链接不存在或已经删除");
+                        }
                         // 查询数据库
                         Shortlink2GidDO gotoDo = shortlink2GidMapper.selectOne(new QueryWrapper<Shortlink2GidDO>()
                                 .eq("fullshorturl", fullShortUrl)
