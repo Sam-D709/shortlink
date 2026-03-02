@@ -16,6 +16,7 @@ import org.samd.shortlink.admin.common.conversion.errorcode.UserErrorCode;
 import org.samd.shortlink.admin.common.conversion.exception.ClientException;
 import org.samd.shortlink.admin.common.conversion.exception.ServiceException;
 import org.samd.shortlink.admin.common.util.ParamValidator;
+import org.samd.shortlink.admin.common.util.UserContext;
 import org.samd.shortlink.admin.dao.entity.UserDO;
 import org.samd.shortlink.admin.dao.mapper.UserMapper;
 import org.samd.shortlink.admin.dto.req.UserLoginReqDTO;
@@ -110,7 +111,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserDO> implements 
         BeanUtils.copyProperties(requestParam, dto);
         ParamValidator.checkUserRegisterReqDTOValuable(dto);
         log.info("更新用户信息实体参数有效");
-        String username = requestParam.getUsername().trim();
+        String username = UserContext.getUsername();
         UpdateWrapper<UserDO> uw = new UpdateWrapper<>();
         uw.eq("username", username);
         if(update(BeanUtil.toBean(requestParam, UserDO.class), uw)){
@@ -154,14 +155,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserDO> implements 
     }
 
     @Override
-    public Boolean checkLogin(String username, String token) {
-        return stringRedisTemplate.opsForHash().get(USER_LOGIN_KEY + username, token) != null;
-    }
-
-    @Override
-    public Boolean logout(String username, String token) {
-        if (checkLogin(username, token)) {
-            stringRedisTemplate.delete(USER_LOGIN_KEY + username);
+    public Boolean logout() {
+        String username = UserContext.getUsername();
+        String loginKey = USER_LOGIN_KEY + username;
+        Map<Object, Object> tokenMap = stringRedisTemplate.opsForHash().entries(loginKey);
+        if (CollUtil.isNotEmpty(tokenMap)) {
+            for (Object token : tokenMap.keySet()) {
+                stringRedisTemplate.opsForHash().delete(loginKey, token);
+            }
+            stringRedisTemplate.delete(loginKey);
             return true;
         }
         throw new ClientException("用户 Token不存在或用户未登录");

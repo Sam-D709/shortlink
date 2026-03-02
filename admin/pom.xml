@@ -76,7 +76,6 @@
             <artifactId>fastjson2</artifactId>
         </dependency>
 
-        <!-- Nacos: service discovery and config -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>

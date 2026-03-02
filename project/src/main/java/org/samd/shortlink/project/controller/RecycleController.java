@@ -1,12 +1,9 @@
 package org.samd.shortlink.project.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.samd.shortlink.project.common.conversion.result.Result;
 import org.samd.shortlink.project.common.conversion.result.Results;
-import org.samd.shortlink.project.dao.entity.LinkDO;
 import org.samd.shortlink.project.dto.req.RecycleLinkReqDTO;
 import org.samd.shortlink.project.dto.resp.LinkRespDTO;
 import org.samd.shortlink.project.service.RecycleService;
@@ -32,8 +29,9 @@ public class RecycleController {
      * @return 返回参数
      */
     @GetMapping("/api/shortlink/project/recyclelink/getpage")
-    public Result<IPage<LinkRespDTO>> getPageRecycleLink(HttpServletRequest request,@RequestBody Page<LinkDO> requestParam){
-        return Results.success(recycleService.getPageRecycleLink(request,requestParam));
+    public Result<IPage<LinkRespDTO>> getPageRecycleLink(@RequestParam(required = false, defaultValue = "1") Integer current,
+                                                         @RequestParam(required = false, defaultValue = "10") Integer size){
+        return Results.success(recycleService.getPageRecycleLink(current,size));
     }
 
     /**

@@ -1,7 +1,5 @@
 package org.samd.shortlink.project.service;
 
-import org.samd.shortlink.project.dto.req.LinkDayStateReqDTO;
-import org.samd.shortlink.project.dto.req.LinkMonthStateReqDTO;
 import org.samd.shortlink.project.dto.resp.LinkDayStateRespDTO;
 import org.samd.shortlink.project.dto.resp.LinkDefaultStateRespDTO;
 import org.samd.shortlink.project.dto.resp.LinkMonthStateRespDTO;
@@ -12,6 +10,8 @@ import org.samd.shortlink.project.dto.resp.LinkMonthStateRespDTO;
 public interface LinkStateService{
 
     LinkDefaultStateRespDTO getDefaultLinkState(String fullshorturl);
-    LinkDayStateRespDTO getDayLinkState(LinkDayStateReqDTO requestParam);
-    LinkMonthStateRespDTO getMonthLinkState(LinkMonthStateReqDTO requestParam);
+
+    LinkDayStateRespDTO getDayLinkState(String fullshorturl, String startDate, String endDate);
+
+    LinkMonthStateRespDTO getMonthLinkState(String fullshorturl, String startMonth, String endMonth);
 }

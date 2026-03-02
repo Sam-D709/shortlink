@@ -3,7 +3,7 @@ package org.samd.shortlink.admin.common.conversion.errorcode;
 public enum BaseErrorCode implements IErrorCode{
     SERVICE_ERROR("500", "服务器内部错误，无法完成请求"),
 
-    OBJECT_NOT_FOUND("404", "请求的资源不存在"),;
+    OBJECT_NOT_FOUND("404", "请求资源不存在"),;
 
     private final String code;
 

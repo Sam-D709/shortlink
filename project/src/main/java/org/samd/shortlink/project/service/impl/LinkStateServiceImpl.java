@@ -5,8 +5,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.samd.shortlink.project.dao.entity.*;
 import org.samd.shortlink.project.dao.mapper.*;
-import org.samd.shortlink.project.dto.req.LinkDayStateReqDTO;
-import org.samd.shortlink.project.dto.req.LinkMonthStateReqDTO;
 import org.samd.shortlink.project.dto.resp.LinkDayStateRespDTO;
 import org.samd.shortlink.project.dto.resp.LinkDefaultStateRespDTO;
 import org.samd.shortlink.project.dto.resp.LinkMonthStateRespDTO;
@@ -123,14 +121,14 @@ public class LinkStateServiceImpl implements LinkStateService {
     }
 
     @Override
-    public LinkDayStateRespDTO getDayLinkState(LinkDayStateReqDTO requestParam) {
+    public LinkDayStateRespDTO getDayLinkState(String fullshorturl, String startDate, String endDate) {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-        LocalDate start = LocalDate.parse(requestParam.getStartDate());
-        LocalDate end = LocalDate.parse(requestParam.getEndDate());
+        LocalDate start = LocalDate.parse(startDate);
+        LocalDate end = LocalDate.parse(endDate);
         QueryWrapper<AccessStateDayDO> wrapper = new QueryWrapper<>();
-        wrapper.eq("fullshorturl", requestParam.getFullshorturl())
-                .ge("date", requestParam.getStartDate())
-                .le("date", requestParam.getEndDate())
+        wrapper.eq("fullshorturl", fullshorturl)
+                .ge("date", startDate)
+                .le("date", endDate)
                 .eq("delflag", 0);
         List<AccessStateDayDO> dayList = accessStateDayMapper.selectList(wrapper);
         Map<String, AccessStateDayDO> dayMap = new HashMap<>();
@@ -153,7 +151,7 @@ public class LinkStateServiceImpl implements LinkStateService {
             // 浏览器统计
             List<BrowserStateDO> browserList = dayDO != null ? browserStateMapper.selectList(
                 new QueryWrapper<BrowserStateDO>()
-                    .eq("fullshorturl", requestParam.getFullshorturl())
+                    .eq("fullshorturl", fullshorturl)
                     .eq("date", dayDO.getDate())
                     .eq("delflag", 0)
             ) : Collections.emptyList();
@@ -173,7 +171,7 @@ public class LinkStateServiceImpl implements LinkStateService {
             // 设备统计
             List<DeviceStateDO> deviceList = dayDO != null ? deviceStateMapper.selectList(
                 new QueryWrapper<DeviceStateDO>()
-                    .eq("fullshorturl", requestParam.getFullshorturl())
+                    .eq("fullshorturl", fullshorturl)
                     .eq("date", dayDO.getDate())
                     .eq("delflag", 0)
             ) : Collections.emptyList();
@@ -193,7 +191,7 @@ public class LinkStateServiceImpl implements LinkStateService {
             // 操作系统统计
             List<OSStateDO> osList = dayDO != null ? osStateMapper.selectList(
                 new QueryWrapper<OSStateDO>()
-                    .eq("fullshorturl", requestParam.getFullshorturl())
+                    .eq("fullshorturl", fullshorturl)
                     .eq("date", dayDO.getDate())
                     .eq("delflag", 0)
             ) : Collections.emptyList();
@@ -219,17 +217,17 @@ public class LinkStateServiceImpl implements LinkStateService {
     }
 
     @Override
-    public LinkMonthStateRespDTO getMonthLinkState(LinkMonthStateReqDTO requestParam) {
-        int startYear = Integer.parseInt(requestParam.getStartMonth().substring(0, 4));
-        int startMonth = Integer.parseInt(requestParam.getStartMonth().substring(5, 7));
-        int endYear = Integer.parseInt(requestParam.getEndMonth().substring(0, 4));
-        int endMonth = Integer.parseInt(requestParam.getEndMonth().substring(5, 7));
+    public LinkMonthStateRespDTO getMonthLinkState(String fullshorturl, String startMonth, String endMonth) {
+        int startYear = Integer.parseInt(startMonth.substring(0, 4));
+        int startMonthInt = Integer.parseInt(startMonth.substring(5, 7));
+        int endYear = Integer.parseInt(endMonth.substring(0, 4));
+        int endMonthInt = Integer.parseInt(endMonth.substring(5, 7));
         QueryWrapper<AccessStateMonthDO> wrapper = new QueryWrapper<>();
-        wrapper.eq("fullshorturl", requestParam.getFullshorturl())
+        wrapper.eq("fullshorturl", fullshorturl)
                 .ge("year", startYear)
-                .ge("month", startMonth)
+                .ge("month", startMonthInt)
                 .le("year", endYear)
-                .le("month", endMonth)
+                .le("month", endMonthInt)
                 .eq("delflag", 0);
         List<AccessStateMonthDO> monthList = accessStateMonthMapper.selectList(wrapper);
         Map<String, AccessStateMonthDO> monthMap = new HashMap<>();
@@ -242,8 +240,8 @@ public class LinkStateServiceImpl implements LinkStateService {
         Map<String, Map<String, Map<String, Object>>> osMonthStat = new LinkedHashMap<>();
         Map<String, Map<String, Map<String, Object>>> deviceMonthStat = new LinkedHashMap<>();
         Map<String, Map<String, Map<String, Object>>> browserMonthStat = new LinkedHashMap<>();
-        int y = startYear, m = startMonth;
-        while (y < endYear || (y == endYear && m <= endMonth)) {
+        int y = startYear, m = startMonthInt;
+        while (y < endYear || (y == endYear && m <= endMonthInt)) {
             String key = y + "-" + String.format("%02d", m);
             AccessStateMonthDO monthDO = monthMap.get(key);
             Map<String, Integer> pvUvMap = new HashMap<>();
@@ -253,7 +251,7 @@ public class LinkStateServiceImpl implements LinkStateService {
             // osMonthStat
             List<OSStateMonthDO> osList = monthDO != null ? osStateMonthMapper.selectList(
                 new QueryWrapper<OSStateMonthDO>()
-                    .eq("fullshorturl", requestParam.getFullshorturl())
+                    .eq("fullshorturl", fullshorturl)
                     .eq("year", y)
                     .eq("month", m)
             ) : Collections.emptyList();
@@ -273,7 +271,7 @@ public class LinkStateServiceImpl implements LinkStateService {
             // deviceMonthStat
             List<DeviceStateMonthDO> deviceList = monthDO != null ? deviceStateMonthMapper.selectList(
                 new QueryWrapper<DeviceStateMonthDO>()
-                    .eq("fullshorturl", requestParam.getFullshorturl())
+                    .eq("fullshorturl", fullshorturl)
                     .eq("year", y)
                     .eq("month", m)
             ) : Collections.emptyList();
@@ -293,7 +291,7 @@ public class LinkStateServiceImpl implements LinkStateService {
             // browserMonthStat
             List<BrowserStateMonthDO> browserList = monthDO != null ? browserStateMonthMapper.selectList(
                 new QueryWrapper<BrowserStateMonthDO>()
-                    .eq("fullshorturl", requestParam.getFullshorturl())
+                    .eq("fullshorturl", fullshorturl)
                     .eq("year", y)
                     .eq("month", m)
             ) : Collections.emptyList();

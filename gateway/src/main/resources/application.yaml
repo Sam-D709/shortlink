@@ -1,0 +1,50 @@
+server:
+  port: 8000
+spring:
+  application:
+    name: shortlink-gateway
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+  cloud:
+    nacos:
+      username: nacos
+      password: nacos
+      discovery:
+        server-addr: ${NACOS_SERVER:127.0.0.1:8848}
+    gateway:
+      server:
+        webflux:
+          routes:
+          - id: shortlink-redirect
+            uri: lb://shortlink-project
+            predicates:
+              - Path=/{shortLink}
+            filters:
+              - name: UvStats
+                args:
+                  enabled: true
+
+          - id: shortlink-admin
+            uri: lb://shortlink-admin
+            predicates:
+              - Path=/api/shortlink/admin/**
+            filters:
+              - name: TokenValidate
+                args:
+                  whitePathList:
+                    - /api/shortlink/admin/user/login
+                    - /api/shortlink/admin/user/hasUsername
+                    - /api/shortlink/admin/user/register
+
+          - id: shortlink-project
+            uri: lb://shortlink-project
+            predicates:
+              - Path=/api/shortlink/project/**
+            filters:
+              - name: TokenValidate
+                args:
+                  whitePathList:
+                    - /api/short-link/admin/v1/user/login
+                    - /api/short-link/admin/v1/user/has-username

@@ -1,16 +1,11 @@
 package org.samd.shortlink.project.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.core.toolkit.ArrayUtils;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RBloomFilter;
@@ -18,14 +13,13 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.samd.shortlink.project.common.conversion.exception.ServiceException;
 import org.samd.shortlink.project.common.util.HashUtil;
-import org.samd.shortlink.project.common.util.LinkMonitorUtil;
 import org.samd.shortlink.project.common.util.RandomCodeUtil;
+import org.samd.shortlink.project.common.util.UvStatsContext;
 import org.samd.shortlink.project.dao.entity.LinkDO;
 import org.samd.shortlink.project.dao.entity.Shortlink2GidDO;
 import org.samd.shortlink.project.dao.mapper.LinkMapper;
 import org.samd.shortlink.project.dao.mapper.Shortlink2GidMapper;
 import org.samd.shortlink.project.dto.req.LinkCreateReqDTO;
-import org.samd.shortlink.project.dto.req.LinkPageReqDTO;
 import org.samd.shortlink.project.dto.req.LinkUpdateBaseReqDTO;
 import org.samd.shortlink.project.dto.req.LinkUpdateGidReqDTO;
 import org.samd.shortlink.project.dto.resp.LinkGroupCountQueryRespDTO;
@@ -107,13 +101,13 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     }
 
     @Override
-    public IPage<LinkRespDTO> getPageLink(LinkPageReqDTO requestParam) {
+    public IPage<LinkRespDTO> getPageLink(String gid, long current, long size) {
         QueryWrapper<LinkDO> qw = new QueryWrapper<>();
-        qw.eq("gid", requestParam.getGid())
+        qw.eq("gid", gid)
                 .eq("enablestatus", 1)
                 .eq("delflag", 0)
                 .orderByDesc("createtime");
-        IPage<LinkDO> linkDOIPage = page(requestParam, qw);
+        IPage<LinkDO> linkDOIPage = this.page(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(current, size), qw);
         return linkDOIPage.convert(linkDO -> BeanUtil.toBean(linkDO, LinkRespDTO.class));
     }
 
@@ -258,22 +252,8 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     }
 
     @Override
-    public ResponseEntity<Void> link2Orginurl(String shortlink, HttpServletRequest request, HttpServletResponse response) {
-        // 获取协议
-        String protocol = request.getHeader("X-Forwarded-Proto");
-        if (StrUtil.isBlank(protocol)) {
-            protocol = request.getHeader("X-Scheme");
-        }
-        if (StrUtil.isBlank(protocol)) {
-            protocol = request.getScheme();
-        }
-        // 获取域名并去除端口号
-        String host = request.getHeader("Host");
-        String domain = host != null ? host.split(":")[0] : "";
-        log.info("访问域名为  {}", domain);
-        log.info("访问协议为  {}", protocol);
-        String fullShortUrl = domain + "/" + shortlink;
-
+    public ResponseEntity<Void> link2Orginurl(String shortlink) {
+        String fullShortUrl = UvStatsContext.getDomain() + "/" + shortlink;
         // 从 Redis 中获取原始链接
         String originLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
         if (originLink == null) {
@@ -340,55 +320,6 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                 lock.unlock();
             }
         }
-        boolean uvFirstFlag = true;
-        boolean uvDayFirstFlag = true;
-        boolean uvMonthFirstFlag = true;
-        String uvValue;
-        Cookie[] requestCookies = request.getCookies();
-
-        try {
-            if (ArrayUtils.isNotEmpty(requestCookies)) {
-                for (Cookie cookie : requestCookies) {
-                    if (("sl_state_hour_" + shortlink).equals(cookie.getName())) {
-                        uvFirstFlag = false;
-                    }
-                    if (("sl_state_day_" + shortlink).equals(cookie.getName())) {
-                        uvDayFirstFlag = false;
-                    }
-                    if (("sl_state_month_" + shortlink).equals(cookie.getName())) {
-                        uvMonthFirstFlag = false;
-                    }
-                }
-            }
-            uvValue = UUID.fastUUID().toString();
-            LocalDateTime now = LocalDateTime.now();
-            if (uvFirstFlag) {
-                Cookie statsCookie = new Cookie("sl_state_hour_" + shortlink, uvValue);
-                statsCookie.setPath("/" + shortlink);
-                LocalDateTime nextHour = now.plusHours(1).withMinute(0).withSecond(0).withNano(0);
-                long seconds = ChronoUnit.SECONDS.between(now, nextHour);
-                statsCookie.setMaxAge((int) seconds);
-                response.addCookie(statsCookie);
-            }
-            if (uvDayFirstFlag) {
-                Cookie statsCookie = new Cookie("sl_state_day_" + shortlink, uvValue);
-                statsCookie.setPath("/" + shortlink);
-                LocalDateTime nextDay = now.plusDays(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
-                long seconds = ChronoUnit.SECONDS.between(now, nextDay);
-                statsCookie.setMaxAge((int) seconds);
-                response.addCookie(statsCookie);
-            }
-            if (uvMonthFirstFlag) {
-                Cookie statsCookie = new Cookie("sl_state_month_" + shortlink, uvValue);
-                statsCookie.setPath("/" + shortlink);
-                LocalDateTime nextMonth = now.plusMonths(1).withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
-                long seconds = ChronoUnit.SECONDS.between(now, nextMonth);
-                statsCookie.setMaxAge((int) seconds);
-                response.addCookie(statsCookie);
-            }
-        } catch (Throwable ex) {
-            log.error("短链接访问统计异常", ex);
-        }
         LocalDateTime now = LocalDateTime.now();
         StatsMessage message = StatsMessage.builder()
                 .fullShortUrl(fullShortUrl)
@@ -396,12 +327,12 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                 .hour(now.getHour())
                 .year(now.getYear())
                 .month(now.getMonthValue())
-                .uvFirstFlag(uvFirstFlag)
-                .uvDayFirstFlag(uvDayFirstFlag)
-                .uvMonthFirstFlag(uvMonthFirstFlag)
-                .os(LinkMonitorUtil.getOSFromRequest(request))
-                .browser(LinkMonitorUtil.getBrowserFromRequest(request))
-                .device(LinkMonitorUtil.getDeviceFromRequest(request))
+                .uvFirstFlag(UvStatsContext.isUvFirst())
+                .uvDayFirstFlag(UvStatsContext.isUvDayFirst())
+                .uvMonthFirstFlag(UvStatsContext.isUvMonthFirst())
+                .os(UvStatsContext.getOs())
+                .browser(UvStatsContext.getBrowser())
+                .device(UvStatsContext.getDevice())
                 .build();
         statsProducer.send(message);
         // 返回重定向响应

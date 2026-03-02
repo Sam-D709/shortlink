@@ -3,14 +3,11 @@ package org.samd.shortlink.project.controller;
 import lombok.RequiredArgsConstructor;
 import org.samd.shortlink.project.common.conversion.result.Result;
 import org.samd.shortlink.project.common.conversion.result.Results;
-import org.samd.shortlink.project.dto.req.LinkDayStateReqDTO;
-import org.samd.shortlink.project.dto.req.LinkMonthStateReqDTO;
 import org.samd.shortlink.project.dto.resp.LinkDayStateRespDTO;
 import org.samd.shortlink.project.dto.resp.LinkDefaultStateRespDTO;
 import org.samd.shortlink.project.dto.resp.LinkMonthStateRespDTO;
 import org.samd.shortlink.project.service.LinkStateService;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,12 +28,18 @@ public class LinkStateController {
     }
 
     @GetMapping("/api/shortlink/project/linkstate/daystate")
-    public Result<LinkDayStateRespDTO> getDayLinkState(@RequestBody LinkDayStateReqDTO requestParam) {
-        return Results.success(linkStateService.getDayLinkState(requestParam));
+    public Result<LinkDayStateRespDTO> getDayLinkState(
+            @RequestParam String fullshorturl,
+            @RequestParam String startDate,
+            @RequestParam String endDate) {
+        return Results.success(linkStateService.getDayLinkState(fullshorturl, startDate, endDate));
     }
 
     @GetMapping("/api/shortlink/project/linkstate/monthstate")
-    public Result<LinkMonthStateRespDTO> getMonthLinkState(@RequestBody LinkMonthStateReqDTO requestParam) {
-        return Results.success(linkStateService.getMonthLinkState(requestParam));
+    public Result<LinkMonthStateRespDTO> getMonthLinkState(
+            @RequestParam String fullshorturl,
+            @RequestParam String startMonth,
+            @RequestParam String endMonth) {
+        return Results.success(linkStateService.getMonthLinkState(fullshorturl, startMonth, endMonth));
     }
 }

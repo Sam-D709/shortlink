@@ -74,7 +74,6 @@ public final class ParamValidator {
 
 
     public static void checkUserRegisterReqDTOValuable(UserRegisterReqDTO dto) throws ClientException {
-        NameNotNull(dto.getUsername());
         passwordNotNull(dto.getPassword());
         if(dto.getEmail() != null && !dto.getEmail().isEmpty()){emailIsValuable(dto.getEmail());}
         if(dto.getPhone() != null && !dto.getPhone().isEmpty()){phoneIsValuable(dto.getPhone());}

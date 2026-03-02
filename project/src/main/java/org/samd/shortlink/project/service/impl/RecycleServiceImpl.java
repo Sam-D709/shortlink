@@ -6,10 +6,10 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.samd.shortlink.project.common.constant.RedisCacheConstant;
+import org.samd.shortlink.project.common.util.UserContext;
 import org.samd.shortlink.project.dao.entity.GroupDO;
 import org.samd.shortlink.project.dao.entity.LinkDO;
 import org.samd.shortlink.project.dao.entity.Shortlink2GidDO;
@@ -121,14 +121,11 @@ public class RecycleServiceImpl extends ServiceImpl<LinkMapper,LinkDO> implement
     }
 
     @Override
-    public IPage<LinkRespDTO> getPageRecycleLink(HttpServletRequest request, Page<LinkDO> requestParam) {
-        String username = null;
-        if (request != null) {
-            username = request.getHeader("username");
-        }
+    public IPage<LinkRespDTO> getPageRecycleLink(Integer current, Integer size){
+        String username = UserContext.getUsername();
         if (username == null || username.trim().isEmpty()) {
             // return empty page instead of null to avoid NPE in callers
-            Page<LinkRespDTO> empty = new Page<>(requestParam == null ? 1 : requestParam.getCurrent(), requestParam == null ? 10 : requestParam.getSize());
+            Page<LinkRespDTO> empty = new Page<>(current, size);
             empty.setRecords(Collections.emptyList());
             return empty;
         }
@@ -138,11 +135,11 @@ public class RecycleServiceImpl extends ServiceImpl<LinkMapper,LinkDO> implement
                 .eq("delflag", 0);
         List<String> gids = groupMapper.selectObjs(queryWrapper);
         if (gids == null || gids.isEmpty()) {
-            Page<LinkRespDTO> empty = new Page<>(requestParam == null ? 1 : requestParam.getCurrent(), requestParam == null ? 10 : requestParam.getSize());
+            Page<LinkRespDTO> empty = new Page<>(current,size);
             empty.setRecords(Collections.emptyList());
             return empty;
         }
-        IPage<LinkDO> linkDOIPage = page(requestParam, new QueryWrapper<LinkDO>()
+        IPage<LinkDO> linkDOIPage = page(new Page<>(current, size), new QueryWrapper<LinkDO>()
                 .in("gid", gids)
                 .eq("enablestatus", 0)
                 .eq("delflag", 0));
