@@ -235,8 +235,9 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
 
             shortlink2GidMapper.update(null, new UpdateWrapper<Shortlink2GidDO>()
                     .set("delflag", 0)
+                    .set("gid", requestParam.getNewGid())
                     .eq("fullshorturl", oldLinkDO.getFullshorturl())
-                    .eq("gid", requestParam.getNewGid()));
+                    .eq("gid", requestParam.getOldGid()));
         } finally {
             writeLock.unlock();
         }
