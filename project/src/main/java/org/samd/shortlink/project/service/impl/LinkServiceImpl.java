@@ -61,7 +61,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     @Transactional(rollbackFor = Exception.class)
     public LinkRespDTO createLink(LinkCreateReqDTO requestParam) {
         String shortlink;
-        String domain = requestParam.getDomain().toLowerCase(); // Convert domain to lowercase
+        String domain = requestParam.getDomain().toLowerCase();
         shortlink = generateShortCode(requestParam.getOriginurl(), domain);
         String fullshortlink = domain + "/" + shortlink;
         LinkDO linkDO = BeanUtil.toBean(requestParam, LinkDO.class);
@@ -72,33 +72,48 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         Shortlink2GidDO gotoDO = new Shortlink2GidDO();
         gotoDO.setFullshorturl(fullshortlink);
         gotoDO.setGid(linkDO.getGid());
-        if(linkDO.getValiddatetype() == 1 && requestParam.getValiddate() > 0 && requestParam.getValiddate() < 366){
-            int days = Math.min(requestParam.getValiddate(),30);
-            LocalDateTime validdate = LocalDateTime.now().plusDays(requestParam.getValiddate());
+        if (linkDO.getValiddatetype() == 1 && requestParam.getValiddate() != null) {
+            LocalDateTime validdate = requestParam.getValiddate();
             linkDO.setValiddate(validdate);
-            stringRedisTemplate.opsForValue().set(
-                    String.format(GOTO_FULL_SHORT_LINK_KEY,fullshortlink),
-                    linkDO.getOriginurl(),days, DAYS);
-        }else{
+            long minutes = java.time.Duration.between(LocalDateTime.now(), validdate).toMinutes();
+            if (minutes > 0 && minutes < 525600) { // 1年内
+                minutes = Math.min(minutes, 43200); // 最多30天
+                stringRedisTemplate.opsForValue().set(
+                        String.format(GOTO_FULL_SHORT_LINK_KEY, fullshortlink),
+                        linkDO.getOriginurl(), minutes, MINUTES);
+            } else if (minutes <= 0) {
+                // 已过期，放入NULL_KEY并删除KEY
+                stringRedisTemplate.opsForValue().set(
+                        String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullshortlink),
+                        "-", 30, MINUTES);
+                stringRedisTemplate.delete(String.format(GOTO_FULL_SHORT_LINK_KEY, fullshortlink));
+            } else {
+                // 超过最大分钟数，设置为43200分钟（30天）
+                stringRedisTemplate.opsForValue().set(
+                        String.format(GOTO_FULL_SHORT_LINK_KEY, fullshortlink),
+                        linkDO.getOriginurl(), 43200, MINUTES);
+            }
+        } else {
             linkDO.setValiddatetype(0);
             linkDO.setValiddate(null);
             stringRedisTemplate.opsForValue().set(
-                    String.format(GOTO_FULL_SHORT_LINK_KEY,fullshortlink),
-                    linkDO.getOriginurl(),30, DAYS);
+                    String.format(GOTO_FULL_SHORT_LINK_KEY, fullshortlink),
+                    linkDO.getOriginurl(), 43200, MINUTES);
         }
-        try{
+        try {
             save(linkDO);
-        }catch (DuplicateKeyException e){
+        } catch (DuplicateKeyException e) {
             log.warn("短链接已存在，原始链接：{}，短链接：{}", requestParam.getOriginurl(), fullshortlink);
             throw new ServiceException("短链接已存在，请勿重复创建");
         }
-        try{
+        try {
             shortlink2GidMapper.insert(gotoDO);
-        }catch (DuplicateKeyException e){
+        } catch (DuplicateKeyException e) {
             log.warn("短链接与分组映射已存在，短链接：{}，分组：{}", fullshortlink, linkDO.getGid());
             throw new ServiceException("短链接和gid映射表出错,请联系管理员或者重新创建短链接");
         }
         linkBloomFilter.add(fullshortlink);
+        stringRedisTemplate.delete(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullshortlink));
         return BeanUtil.toBean(linkDO, LinkRespDTO.class);
     }
 
@@ -145,20 +160,33 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         LinkDO updatedLinkDO = BeanUtil.toBean(requestParam, LinkDO.class);
         updatedLinkDO.setDomain(domain);
         updatedLinkDO.setFullshorturl(fullShortUrl);
-        if (requestParam.getValiddatetype() == 1 && requestParam.getValiddate() > 0 && requestParam.getValiddate() < 366) {
-            int days = Math.min(requestParam.getValiddate(), 30);
-            LocalDateTime validdate = LocalDateTime.now().plusDays(requestParam.getValiddate());
+        if (requestParam.getValiddatetype() == 1 && requestParam.getValiddate() != null) {
+            LocalDateTime validdate = requestParam.getValiddate();
             updatedLinkDO.setValiddate(validdate);
-            stringRedisTemplate.opsForValue().set(
-                    String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl),
-                    requestParam.getOriginurl(), days, DAYS);
+            long minutes = java.time.Duration.between(LocalDateTime.now(), validdate).toMinutes();
+            if (minutes > 0 && minutes < 525600) {
+                minutes = Math.min(minutes, 43200);
+                stringRedisTemplate.opsForValue().set(
+                        String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl),
+                        requestParam.getOriginurl(), minutes, MINUTES);
+            } else if (minutes <= 0) {
+                stringRedisTemplate.opsForValue().set(
+                        String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl),
+                        "-", 30, MINUTES);
+                stringRedisTemplate.delete(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
+            } else {
+                stringRedisTemplate.opsForValue().set(
+                        String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl),
+                        requestParam.getOriginurl(), 43200, MINUTES);
+            }
         } else {
             requestParam.setValiddatetype(0);
             requestParam.setValiddate(null);
             stringRedisTemplate.opsForValue().set(
                     String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl),
-                    requestParam.getOriginurl(), 30, DAYS);
+                    requestParam.getOriginurl(), 43200, MINUTES);
         }
+        stringRedisTemplate.delete(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl));
         update(updatedLinkDO, new UpdateWrapper<LinkDO>()
                 .eq("gid", requestParam.getGid())
                 .eq("id", requestParam.getId()));
@@ -205,26 +233,10 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                     .eq("delflag", 0)
                     .set("delflag", 1));
 
-            Shortlink2GidDO existingMapping = shortlink2GidMapper.selectOne(new QueryWrapper<Shortlink2GidDO>()
+            shortlink2GidMapper.update(null, new UpdateWrapper<Shortlink2GidDO>()
+                    .set("delflag", 0)
                     .eq("fullshorturl", oldLinkDO.getFullshorturl())
                     .eq("gid", requestParam.getNewGid()));
-
-            if (existingMapping != null) {
-                shortlink2GidMapper.update(null, new UpdateWrapper<Shortlink2GidDO>()
-                        .set("delflag", 0)
-                        .eq("fullshorturl", oldLinkDO.getFullshorturl())
-                        .eq("gid", requestParam.getNewGid()));
-            } else {
-                Shortlink2GidDO newMapping = new Shortlink2GidDO();
-                newMapping.setFullshorturl(oldLinkDO.getFullshorturl());
-                newMapping.setGid(requestParam.getNewGid());
-                shortlink2GidMapper.insert(newMapping);
-            }
-
-            shortlink2GidMapper.update(null, new UpdateWrapper<Shortlink2GidDO>()
-                    .set("delflag", 1)
-                    .eq("fullshorturl", oldLinkDO.getFullshorturl())
-                    .eq("gid", requestParam.getOldGid()));
         } finally {
             writeLock.unlock();
         }

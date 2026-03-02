@@ -1,6 +1,9 @@
 package org.samd.shortlink.project.dto.req;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
+
+import java.time.LocalDateTime;
 
 @Data
 public class LinkCreateReqDTO {
@@ -32,7 +35,8 @@ public class LinkCreateReqDTO {
     /**
      * 有效期
      */
-    private Integer validdate;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime validdate;
 
     /**
      * 描述
