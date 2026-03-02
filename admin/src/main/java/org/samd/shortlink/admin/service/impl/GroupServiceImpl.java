@@ -25,6 +25,7 @@ import java.util.List;
 public class GroupServiceImpl extends ServiceImpl<GroupMapper, GroupDO> implements GroupService{
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean createGroup(String groupName) {
         String gid;
         do{
@@ -51,6 +52,7 @@ public class GroupServiceImpl extends ServiceImpl<GroupMapper, GroupDO> implemen
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean updateGroupName(String gid, String groupName) {
         UpdateWrapper<GroupDO> uw = new UpdateWrapper<>();
         uw.eq("gid",gid)
@@ -61,6 +63,7 @@ public class GroupServiceImpl extends ServiceImpl<GroupMapper, GroupDO> implemen
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean deleteGroup(String gid) {
         UpdateWrapper<GroupDO> uw = new UpdateWrapper<>();
         uw.eq("gid",gid)

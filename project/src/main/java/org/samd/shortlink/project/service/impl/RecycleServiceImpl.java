@@ -223,6 +223,7 @@ public class RecycleServiceImpl extends ServiceImpl<LinkMapper,LinkDO> implement
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean deleteRecycleLink(RecycleLinkReqDTO requestParam) {
         if (requestParam == null) {
             log.warn("deleteRecycleLink called with null requestParam");

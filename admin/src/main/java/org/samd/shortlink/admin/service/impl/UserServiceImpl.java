@@ -68,7 +68,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserDO> implements 
         return userRegisterCachePenetrationBloomFilter.contains(username);
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     @Override
     public Boolean registerUser(UserRegisterReqDTO requestParam) {
         ParamValidator.checkUserRegisterReqDTOValuable(requestParam);
@@ -106,6 +106,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserDO> implements 
 
     // java
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean updateUser(UserUpdateReqDTO requestParam) {
         UserRegisterReqDTO dto = new UserRegisterReqDTO();
         BeanUtils.copyProperties(requestParam, dto);
