@@ -255,6 +255,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                     if (originLink == null) {
                         String nullLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl));
                         if (StrUtil.isNotBlank(nullLink)) {
+                            lock.unlock();
                             readLock.unlock();
                             throw new ServiceException("短链接不存在或已经删除");
                         }
