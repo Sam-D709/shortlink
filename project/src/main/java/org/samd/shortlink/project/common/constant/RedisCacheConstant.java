@@ -19,4 +19,9 @@ public class RedisCacheConstant {
      * 路由表空值标识
      */
     public static final String GOTO_FULL_SHORT_LINK_NULL_KEY = "shortlink:shortlink_goto_null_%s:";
+
+    /**
+     * 延时双删默认延迟（毫秒）
+     */
+    public static final long DELAY_DELETE_SHORT_LINK_CACHE_MILLIS = 500L;
 }

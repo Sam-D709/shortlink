@@ -12,10 +12,7 @@ import org.redisson.api.RBloomFilter;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.samd.shortlink.project.common.conversion.exception.ServiceException;
-import org.samd.shortlink.project.common.util.HashUtil;
-import org.samd.shortlink.project.common.util.RandomCodeUtil;
-import org.samd.shortlink.project.common.util.UserContext;
-import org.samd.shortlink.project.common.util.UvStatsContext;
+import org.samd.shortlink.project.common.util.*;
 import org.samd.shortlink.project.dao.entity.LinkDO;
 import org.samd.shortlink.project.dao.entity.Shortlink2GidDO;
 import org.samd.shortlink.project.dao.mapper.LinkMapper;
@@ -56,6 +53,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
     private final StatsProducer statsProducer;
+    private final RedisDelayedDoubleDeleteService redisDelayedDoubleDeleteService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -161,35 +159,16 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         updatedLinkDO.setDomain(domain);
         updatedLinkDO.setFullshorturl(fullShortUrl);
         if (requestParam.getValiddatetype() == 1 && requestParam.getValiddate() != null) {
-            LocalDateTime validdate = requestParam.getValiddate();
-            updatedLinkDO.setValiddate(validdate);
-            long minutes = java.time.Duration.between(LocalDateTime.now(), validdate).toMinutes();
-            if (minutes > 0 && minutes < 525600) {
-                minutes = Math.min(minutes, 43200);
-                stringRedisTemplate.opsForValue().set(
-                        String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl),
-                        requestParam.getOriginurl(), minutes, MINUTES);
-            } else if (minutes <= 0) {
-                stringRedisTemplate.opsForValue().set(
-                        String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl),
-                        "-", 30, MINUTES);
-                stringRedisTemplate.delete(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
-            } else {
-                stringRedisTemplate.opsForValue().set(
-                        String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl),
-                        requestParam.getOriginurl(), 43200, MINUTES);
-            }
+            updatedLinkDO.setValiddate(requestParam.getValiddate());
         } else {
-            requestParam.setValiddatetype(0);
-            requestParam.setValiddate(null);
-            stringRedisTemplate.opsForValue().set(
-                    String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl),
-                    requestParam.getOriginurl(), 43200, MINUTES);
+            updatedLinkDO.setValiddatetype(0);
+            updatedLinkDO.setValiddate(null);
         }
-        stringRedisTemplate.delete(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl));
+
         update(updatedLinkDO, new UpdateWrapper<LinkDO>()
                 .eq("gid", requestParam.getGid())
                 .eq("id", requestParam.getId()));
+        redisDelayedDoubleDeleteService.deleteNowAndDelayAfterCommit(fullShortUrl);
         return true;
     }
 
@@ -238,6 +217,7 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
                     .set("gid", requestParam.getNewGid())
                     .eq("fullshorturl", oldLinkDO.getFullshorturl())
                     .eq("gid", requestParam.getOldGid()));
+            redisDelayedDoubleDeleteService.deleteNowAndDelayAfterCommit(oldLinkDO.getFullshorturl());
         } finally {
             writeLock.unlock();
         }

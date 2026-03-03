@@ -8,11 +8,11 @@ import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
-import org.samd.shortlink.project.common.constant.RedisCacheConstant;
+import org.samd.shortlink.project.common.util.RedisDelayedDoubleDeleteService;
 import org.samd.shortlink.project.dao.entity.LinkDO;
+import org.samd.shortlink.project.dao.entity.Shortlink2GidDO;
 import org.samd.shortlink.project.dao.mapper.LinkMapper;
-import org.samd.shortlink.project.mq.entity.BatchDeleteLinkMessage;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.samd.shortlink.project.dao.mapper.Shortlink2GidMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -28,17 +28,18 @@ import java.util.List;
         topic = "${mq.batchDeleteLink.topic:BATCH_DELETE_LINK}",
         consumerGroup = "${mq.batchDeleteLink.consumerGroup:batch-delete-link-group}"
 )
-public class BatchDeleteLinkConsumer implements RocketMQListener<List<BatchDeleteLinkMessage>> {
+public class BatchDeleteLinkConsumer implements RocketMQListener<List<String>> {
 
     private final LinkMapper linkMapper;
-    private final StringRedisTemplate stringRedisTemplate;
+    private final Shortlink2GidMapper shortlink2GidMapper;
     private final RedissonClient redissonClient;
+    private final RedisDelayedDoubleDeleteService redisDelayedDoubleDeleteService;
 
     @Override
-    public void onMessage(List<BatchDeleteLinkMessage> messageList) {
+    public void onMessage(List<String> messageList) {
         // 批量处理每个gid
-        for (BatchDeleteLinkMessage msg : messageList) {
-            handleDelete(msg.getGid());
+        for (String msg : messageList) {
+            handleDelete(msg);
         }
     }
 
@@ -57,13 +58,22 @@ public class BatchDeleteLinkConsumer implements RocketMQListener<List<BatchDelet
             RLock writeLock = redissonClient.getReadWriteLock(lockKey).writeLock();
             writeLock.lock();
             try {
-                // 逻辑删除
+                // 逻辑删除 link 表
                 linkMapper.update(null, new UpdateWrapper<LinkDO>()
+                        .eq("gid", gid)
                         .eq("id", link.getId())
                         .set("delflag", 1));
-                // 删除Redis缓存
-                stringRedisTemplate.delete(String.format(RedisCacheConstant.GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
-                log.info("[BatchDeleteLinkConsumer] 已逻辑删除短链并清理缓存，fullShortUrl={}", fullShortUrl);
+
+                // 逻辑删除 shortlink2gid 表（按分片键 fullshorturl 路由）
+                shortlink2GidMapper.update(null, new UpdateWrapper<Shortlink2GidDO>()
+                        .eq("fullshorturl", fullShortUrl)
+                        .eq("gid", gid)
+                        .eq("delflag", 0)
+                        .set("delflag", 1));
+
+                // 延时双删缓存
+                redisDelayedDoubleDeleteService.deleteNowAndDelay(fullShortUrl);
+                log.info("[BatchDeleteLinkConsumer] 已逻辑删除短链及映射并清理缓存，fullShortUrl={}", fullShortUrl);
             } finally {
                 writeLock.unlock();
             }

@@ -8,7 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.samd.shortlink.project.common.constant.RedisCacheConstant;
+import org.samd.shortlink.project.common.util.RedisDelayedDoubleDeleteService;
 import org.samd.shortlink.project.common.util.UserContext;
 import org.samd.shortlink.project.dao.entity.GroupDO;
 import org.samd.shortlink.project.dao.entity.LinkDO;
@@ -19,7 +19,6 @@ import org.samd.shortlink.project.dao.mapper.Shortlink2GidMapper;
 import org.samd.shortlink.project.dto.req.RecycleLinkReqDTO;
 import org.samd.shortlink.project.dto.resp.LinkRespDTO;
 import org.samd.shortlink.project.service.RecycleService;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,8 +34,8 @@ import java.util.stream.Collectors;
 public class RecycleServiceImpl extends ServiceImpl<LinkMapper,LinkDO> implements RecycleService {
 
     private final Shortlink2GidMapper shortlink2GidMapper;
-    private final StringRedisTemplate stringRedisTemplate;
     private final GroupMapper groupMapper;
+    private final RedisDelayedDoubleDeleteService redisDelayedDoubleDeleteService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -98,25 +97,7 @@ public class RecycleServiceImpl extends ServiceImpl<LinkMapper,LinkDO> implement
             log.error("更新 shortlink2gid 表 delflag 失败, gid={}, fullshorturls={}, error={}", gid, fullShortUrls, e.getMessage(), e);
             throw e;
         }
-
-        try {
-            for (String full : fullShortUrls) {
-                if (full == null) {
-                    continue;
-                }
-                String normalized = full.trim();
-                String key = String.format(RedisCacheConstant.GOTO_FULL_SHORT_LINK_KEY, normalized);
-                try {
-                    stringRedisTemplate.delete(key);
-                } catch (Exception ex) {
-                    // log and continue
-                    log.warn("删除 redis key 失败 key={}, error={}", key, ex.getMessage());
-                }
-            }
-        } catch (Exception e) {
-            log.error("删除 redis 缓存失败, fullshorturls={}, error={}", fullShortUrls, e.getMessage(), e);
-            // do not throw to avoid rollback of db operations for cache-only failure
-        }
+        redisDelayedDoubleDeleteService.deleteNowAndDelayAfterCommit(fullShortUrls);
         return true;
     }
 
@@ -197,28 +178,11 @@ public class RecycleServiceImpl extends ServiceImpl<LinkMapper,LinkDO> implement
             log.error("更新 shortlink2gid 表 delflag 失败, gid={}, fullshorturls={}, error={}", gid, fullShortUrls, e.getMessage(), e);
             throw e;
         }
-        try {
-            for (String full : fullShortUrls) {
-                if (full == null) {
-                    continue;
-                }
-                String normalized = full.trim();
-                String key = String.format(RedisCacheConstant.GOTO_FULL_SHORT_LINK_NULL_KEY, normalized);
-                try {
-                    stringRedisTemplate.delete(key);
-                } catch (Exception ex) {
-                    // log and continue
-                    log.warn("删除 redis key 失败 key={}, error={}", key, ex.getMessage());
-                }
-            }
-        } catch (Exception e) {
-            log.error("删除 redis 缓存失败, fullshorturls={}, error={}", fullShortUrls, e.getMessage(), e);
-            // do not throw to avoid rollback of db operations for cache-only failure
-        }
         boolean updated = update(null, updateWrapper);
         if (!updated) {
             log.warn("recoverLink: update link enablestatus returned false, gid={}, ids={}", gid, ids);
         }
+        redisDelayedDoubleDeleteService.deleteNowAndDelayAfterCommit(fullShortUrls);
         return updated;
     }
 
@@ -234,6 +198,22 @@ public class RecycleServiceImpl extends ServiceImpl<LinkMapper,LinkDO> implement
         if (gid == null || gid.trim().isEmpty() || ids == null || ids.isEmpty()) {
             return false;
         }
+
+        List<LinkDO> linkDOS = list(new QueryWrapper<LinkDO>()
+                .eq("gid", gid)
+                .in("id", ids)
+                .eq("delflag", 0)
+                .eq("username", UserContext.getUsername()));
+        if (linkDOS == null || linkDOS.isEmpty()) {
+            return false;
+        }
+        List<String> fullShortUrls = linkDOS.stream()
+                .map(LinkDO::getFullshorturl)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
+
         UpdateWrapper<LinkDO> updateWrapper = new UpdateWrapper<>();
         updateWrapper.eq("gid", gid)
                 .eq("username", UserContext.getUsername())
@@ -243,6 +223,12 @@ public class RecycleServiceImpl extends ServiceImpl<LinkMapper,LinkDO> implement
         if (!updated) {
             log.warn("deleteRecycleLink: update delflag returned false, gid={}, ids={}", gid, ids);
         }
+
+        shortlink2GidMapper.update(null, new UpdateWrapper<Shortlink2GidDO>()
+                .in("fullshorturl", fullShortUrls)
+                .eq("gid", gid)
+                .set("delflag", 1));
+        redisDelayedDoubleDeleteService.deleteNowAndDelayAfterCommit(fullShortUrls);
         return updated;
     }
 }

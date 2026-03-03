@@ -38,6 +38,11 @@ mq:
     retry-key: shorylink:delay:retry
     initial-delay: 5
 
+shortlink:
+  cache:
+    double-delete:
+      delay-ms: 500
+
 mybatis-plus:
   mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: org.samd.shortlink.project.entity
