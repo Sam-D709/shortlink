@@ -41,6 +41,7 @@ import java.util.Map;
 
 import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.samd.shortlink.project.common.constant.RedisCacheConstant.*;
 
 @Slf4j
@@ -152,11 +153,8 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         if (oldLinkDO == null) {
             throw new ServiceException("短链接不存在");
         }
-        String domain = oldLinkDO.getDomain();
         String fullShortUrl = oldLinkDO.getFullshorturl();
-
         LinkDO updatedLinkDO = BeanUtil.toBean(requestParam, LinkDO.class);
-        updatedLinkDO.setDomain(domain);
         updatedLinkDO.setFullshorturl(fullShortUrl);
         if (requestParam.getValiddatetype() == 1 && requestParam.getValiddate() != null) {
             updatedLinkDO.setValiddate(requestParam.getValiddate());
@@ -168,7 +166,9 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         update(updatedLinkDO, new UpdateWrapper<LinkDO>()
                 .eq("gid", requestParam.getGid())
                 .eq("id", requestParam.getId()));
-        redisDelayedDoubleDeleteService.deleteNowAndDelayAfterCommit(fullShortUrl);
+        if(!oldLinkDO.getOriginurl().equals(updatedLinkDO.getOriginurl())) {
+            redisDelayedDoubleDeleteService.deleteNowAndDelayAfterCommit(fullShortUrl);
+        }
         return true;
     }
 
@@ -184,43 +184,36 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
         if (oldLinkDO == null) {
             throw new ServiceException("短链接不存在");
         }
-        String lockKey = String.format("rwlock:shortlink:%s", oldLinkDO.getFullshorturl());
-        RLock writeLock = redissonClient.getReadWriteLock(lockKey).writeLock();
-        writeLock.lock();
-        try {
-            LinkDO existingLinkDO = getOne(new QueryWrapper<LinkDO>()
-                    .eq("gid", requestParam.getNewGid())
-                    .eq("fullshorturl", oldLinkDO.getFullshorturl()));
+        LinkDO existingLinkDO = getOne(new QueryWrapper<LinkDO>()
+                .eq("gid", requestParam.getNewGid())
+                .eq("fullshorturl", oldLinkDO.getFullshorturl()));
 
-            if (existingLinkDO != null) {
-                update(null, new UpdateWrapper<LinkDO>()
-                        .eq("gid", requestParam.getNewGid())
-                        .eq("id", existingLinkDO.getId())
-                        .set("delflag", 0)
-                        .set("enablestatus", 1));
-            } else {
-                oldLinkDO.setGid(requestParam.getNewGid());
-                oldLinkDO.setId(null);
-                oldLinkDO.setDelflag(0);
-                oldLinkDO.setEnablestatus(1);
-                save(oldLinkDO);
-            }
-
+        if (existingLinkDO != null) {
             update(null, new UpdateWrapper<LinkDO>()
-                    .eq("gid", requestParam.getOldGid())
-                    .eq("id", requestParam.getId())
-                    .eq("delflag", 0)
-                    .set("delflag", 1));
-
-            shortlink2GidMapper.update(null, new UpdateWrapper<Shortlink2GidDO>()
+                    .eq("gid", requestParam.getNewGid())
+                    .eq("id", existingLinkDO.getId())
                     .set("delflag", 0)
-                    .set("gid", requestParam.getNewGid())
-                    .eq("fullshorturl", oldLinkDO.getFullshorturl())
-                    .eq("gid", requestParam.getOldGid()));
-            redisDelayedDoubleDeleteService.deleteNowAndDelayAfterCommit(oldLinkDO.getFullshorturl());
-        } finally {
-            writeLock.unlock();
+                    .set("enablestatus", 1));
+        } else {
+            oldLinkDO.setGid(requestParam.getNewGid());
+            oldLinkDO.setId(null);
+            oldLinkDO.setDelflag(0);
+            oldLinkDO.setEnablestatus(1);
+            save(oldLinkDO);
         }
+
+        update(null, new UpdateWrapper<LinkDO>()
+                .eq("gid", requestParam.getOldGid())
+                .eq("id", requestParam.getId())
+                .eq("delflag", 0)
+                .set("delflag", 1));
+
+        shortlink2GidMapper.update(null, new UpdateWrapper<Shortlink2GidDO>()
+                .set("delflag", 0)
+                .set("gid", requestParam.getNewGid())
+                .eq("fullshorturl", oldLinkDO.getFullshorturl())
+                .eq("gid", requestParam.getOldGid()));
+        redisDelayedDoubleDeleteService.deleteNowAndDelayAfterCommit(oldLinkDO.getFullshorturl());
         return true;
     }
 
@@ -234,79 +227,72 @@ public class LinkServiceImpl extends ServiceImpl<LinkMapper, LinkDO> implements 
             // 检查布隆过滤器和 Redis 标记
             if (!linkBloomFilter.contains(fullShortUrl) ||
                     StrUtil.isNotBlank(stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl)))) {
-                throw new ServiceException("短链接不存在或已经删除");
+                throw new ServiceException("短链接不存在或已经删除,被空缓存第一次访问拦截");
             }
-            // 获取读写锁的读锁，尝试1秒内获取，超时则直接返回错误
-            RLock readLock = redissonClient.getReadWriteLock("rwlock:shortlink:" + fullShortUrl).readLock();
+            // 获取分布式锁
+            RLock lock = redissonClient.getLock(String.format(LOCK_GOTO_SHORT_LINK_KEY, fullShortUrl));
             boolean locked = false;
             try {
-                locked = readLock.tryLock(1, java.util.concurrent.TimeUnit.SECONDS);
+                locked = lock.tryLock(3, 10, SECONDS);
                 if (!locked) {
-                    // 超过1秒未获取到锁，直接返回错误
                     throw new ServiceException("系统繁忙，请稍后重试");
                 }
-                // 获取分布式锁
-                RLock lock = redissonClient.getLock(String.format(LOCK_GOTO_SHORT_LINK_KEY, fullShortUrl));
-                lock.lock();
-                try{
-                    // 再次检查 Redis
-                    originLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
-                    if (originLink == null) {
-                        String nullLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl));
-                        if (StrUtil.isNotBlank(nullLink)) {
-                            throw new ServiceException("短链接不存在或已经删除");
-                        }
-                        // 查询数据库
-                        Shortlink2GidDO gotoDo = shortlink2GidMapper.selectOne(new QueryWrapper<Shortlink2GidDO>()
-                                .eq("fullshorturl", fullShortUrl)
-                                .eq("delflag", 0));
-                        if (gotoDo == null) {
-                            // 设置标记为不存在的键，避免重复查询
+                // 再次检查 Redis
+                originLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl));
+                if (originLink == null) {
+                    String nullLink = stringRedisTemplate.opsForValue().get(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl));
+                    if (StrUtil.isNotBlank(nullLink)) {
+                        throw new ServiceException("短链接不存在或已经删除,被空缓存第二次拦截");
+                    }
+                    log.info("短链接 [{}] Redis 缓存未命中，开始查询数据库", fullShortUrl);
+                    // 查询数据库
+                    Shortlink2GidDO gotoDo = shortlink2GidMapper.selectOne(new QueryWrapper<Shortlink2GidDO>()
+                            .eq("fullshorturl", fullShortUrl)
+                            .eq("delflag", 0));
+                    if (gotoDo == null) {
+                        // 设置标记为不存在的键，避免重复查询
+                        stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
+                        throw new ServiceException("短链接不存在或已经删除,数据库查询未找到映射");
+                    }
+                    LinkDO linkDO = getOne(new QueryWrapper<LinkDO>()
+                            .eq("gid", gotoDo.getGid())
+                            .eq("fullshorturl", fullShortUrl)
+                            .eq("enablestatus", 1)
+                            .eq("delflag", 0));
+                    // 如果短链接已过期或被标记为删除，更新 delflag 并设置 Redis 标记
+                    if (linkDO != null) {
+                        originLink = linkDO.getOriginurl();
+                        if (linkDO.getValiddatetype() == 1 && linkDO.getValiddate().isBefore(LocalDateTime.now())) {
+                            update(null, new UpdateWrapper<LinkDO>()
+                                    .eq("gid", gotoDo.getGid())
+                                    .eq("id", linkDO.getId())
+                                    .set("enablestatus", 0));
+                            shortlink2GidMapper.update(new UpdateWrapper<Shortlink2GidDO>()
+                                    .eq("fullshorturl", fullShortUrl)
+                                    .eq("gid", gotoDo.getGid())
+                                    .set("delflag", 1));
                             stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
-                            throw new ServiceException("短链接不存在或已经删除");
-                        }
-                        LinkDO linkDO = getOne(new QueryWrapper<LinkDO>()
-                                .eq("gid", gotoDo.getGid())
-                                .eq("fullshorturl", fullShortUrl)
-                                .eq("enablestatus", 1)
-                                .eq("delflag", 0));
-                        // 如果短链接已过期或被标记为删除，更新 delflag 并设置 Redis 标记
-                        if (linkDO != null) {
-                            originLink = linkDO.getOriginurl();
-                            if (linkDO.getValiddatetype() == 1 && linkDO.getValiddate().isBefore(LocalDateTime.now())) {
-                                update(null, new UpdateWrapper<LinkDO>()
-                                        .eq("gid", gotoDo.getGid())
-                                        .eq("id", linkDO.getId())
-                                        .set("enablestatus", 0));
-                                shortlink2GidMapper.update(new UpdateWrapper<Shortlink2GidDO>()
-                                        .eq("fullshorturl", fullShortUrl)
-                                        .eq("gid", gotoDo.getGid())
-                                        .set("delflag", 1));
-                                stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
-                                throw new ServiceException("短链接不存在或已经删除");
-                            } else if (linkDO.getValiddatetype() == 0) {
-                                stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl), originLink, 30, DAYS);
-                            } else if (linkDO.getValiddatetype() == 1 && linkDO.getValiddate().isAfter(LocalDateTime.now())) {
-                                long MIN = Math.min(LocalDateTime.now().until(linkDO.getValiddate(), ChronoUnit.MINUTES), 1800);
-                                stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl), originLink, MIN, MINUTES);
-                            } else {
-                                stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
-                                throw new ServiceException("短链接不存在或已经删除");
-                            }
+                            throw new ServiceException("短链接过期被更新");
+                        } else if (linkDO.getValiddatetype() == 0) {
+                            stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl), originLink, 30, DAYS);
+                        } else if (linkDO.getValiddatetype() == 1 && linkDO.getValiddate().isAfter(LocalDateTime.now())) {
+                            long MIN = Math.min(LocalDateTime.now().until(linkDO.getValiddate(), ChronoUnit.MINUTES), 1800);
+                            stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_KEY, fullShortUrl), originLink, MIN, MINUTES);
                         } else {
                             stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
-                            throw new ServiceException("短链接不存在或已经删除");
+                            throw new ServiceException("短链接不存在或已经删除,有效期异常");
                         }
+                    } else {
+                        stringRedisTemplate.opsForValue().set(String.format(GOTO_FULL_SHORT_LINK_NULL_KEY, fullShortUrl), "-", 1, DAYS);
+                        throw new ServiceException("短链接不存在或已经删除,数据库查询未找到有效链接");
                     }
-                }finally {
-                    lock.unlock();
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new ServiceException("系统繁忙，请稍后重试");
+                throw new ServiceException("获取短链接锁被中断");
             } finally {
-                if (locked) {
-                    readLock.unlock();
+                if (locked && lock.isHeldByCurrentThread()) {
+                    lock.unlock();
                 }
             }
         }

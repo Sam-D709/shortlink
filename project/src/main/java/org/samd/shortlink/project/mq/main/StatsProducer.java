@@ -3,6 +3,7 @@ package org.samd.shortlink.project.mq.main;
 import com.alibaba.fastjson2.JSON;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
@@ -39,26 +40,40 @@ public class StatsProducer {
                 .build();
 
         try {
-            // 同步发送，2秒超时
-            SendResult sendResult = rocketMQTemplate.syncSend(topic, build, 2000L);
+            // 异步发送，2秒超时
+            rocketMQTemplate.asyncSend(topic, build, new SendCallback() {
+                @Override
+                public void onSuccess(SendResult sendResult) {
+                    if (sendResult != null && sendResult.getSendStatus() != null
+                            && "SEND_OK".equals(sendResult.getSendStatus().name())) {
+                        log.info("[生产者]发送成功: msgId={}, keys={}", sendResult.getMsgId(), keys);
+                        return;
+                    }
 
-            if (sendResult.getSendStatus().name().equals("SEND_OK")) {
-                log.info("[生产者]发送成功: msgId={}, keys={}",
-                        sendResult.getMsgId(), keys);
-                return;
-            }
+                    String error = sendResult == null
+                            ? "sendResult is null"
+                            : "发送状态异常: " + sendResult.getSendStatus();
+                    log.error("[生产者]异步发送状态异常，转入延迟队列: keys={}, error={}", keys, error);
+                    delayRetryProducer.sendToRetry(keys, payloadJson, "STATS_MESSAGE", error);
+                }
 
-            // 状态异常，进入降级
-            throw new RuntimeException("[生产者]发送状态异常: " + sendResult.getSendStatus());
+                @Override
+                public void onException(Throwable ex) {
+                    String error = ex.getMessage();
+                    log.error("[生产者]异步发送失败，转入延迟队列: keys={}, error={}", keys, error);
+                    delayRetryProducer.sendToRetry(keys, payloadJson, "STATS_MESSAGE", error);
+                }
+            }, 2000L);
 
         } catch (Throwable ex) {
-            log.error("[生产者]发送信息失败，转入延迟队列: keys={}, error={}", keys, ex.getMessage());
+            String error = ex.getMessage();
+            log.error("[生产者]发起异步发送失败，转入延迟队列: keys={}, error={}", keys, error);
 
             delayRetryProducer.sendToRetry(
                     keys,
                     payloadJson,
                     "STATS_MESSAGE",
-                    ex.getMessage()
+                    error
             );
         }
     }
